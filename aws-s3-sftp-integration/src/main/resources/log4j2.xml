@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration>
+    <Properties>
+        <Property name="log.pattern">${sys:log.pattern:-%d{ISO8601} %-5p [%t] %c{1}: %m%n}</Property>
+        <Property name="log.level">${sys:log.level:-INFO}</Property>
+        <Property name="log.path">${sys:mule.home}${sys:file.separator}logs</Property>
+    </Properties>
+
+    <Appenders>
+        <!-- Console Appender -->
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="${log.pattern}"/>
+        </Console>
+
+        <!-- Application Log File -->
+        <RollingFile name="ApplicationFile"
+                     fileName="${log.path}/aws-s3-sftp-integration.log"
+                     filePattern="${log.path}/aws-s3-sftp-integration-%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout pattern="${log.pattern}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="100 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="30">
+                <Delete basePath="${log.path}" maxDepth="1">
+                    <IfFileName glob="aws-s3-sftp-integration-*.log.gz"/>
+                    <IfLastModified age="30d"/>
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
+
+        <!-- Error Log File -->
+        <RollingFile name="ErrorFile"
+                     fileName="${log.path}/aws-s3-sftp-integration-error.log"
+                     filePattern="${log.path}/aws-s3-sftp-integration-error-%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout pattern="${log.pattern}"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="100 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="30">
+                <Delete basePath="${log.path}" maxDepth="1">
+                    <IfFileName glob="aws-s3-sftp-integration-error-*.log.gz"/>
+                    <IfLastModified age="30d"/>
+                </Delete>
+            </DefaultRolloverStrategy>
+            <Filters>
+                <ThresholdFilter level="ERROR" onMatch="ACCEPT" onMismatch="DENY"/>
+            </Filters>
+        </RollingFile>
+
+        <!-- Audit Log File for Business Events -->
+        <RollingFile name="AuditFile"
+                     fileName="${log.path}/aws-s3-sftp-integration-audit.log"
+                     filePattern="${log.path}/aws-s3-sftp-integration-audit-%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout pattern="%d{ISO8601}|%m%n"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
+                <SizeBasedTriggeringPolicy size="100 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="90">
+                <Delete basePath="${log.path}" maxDepth="1">
+                    <IfFileName glob="aws-s3-sftp-integration-audit-*.log.gz"/>
+                    <IfLastModified age="90d"/>
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
+
+        <!-- Async Appenders for Performance -->
+        <Async name="AsyncApplicationFile">
+            <AppenderRef ref="ApplicationFile"/>
+        </Async>
+
+        <Async name="AsyncErrorFile">
+            <AppenderRef ref="ErrorFile"/>
+        </Async>
+
+        <Async name="AsyncAuditFile">
+            <AppenderRef ref="AuditFile"/>
+        </Async>
+    </Appenders>
+
+    <Loggers>
+        <!-- Application Loggers -->
+        <AsyncLogger name="com.mulesoft.integration" level="${log.level}" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="AsyncApplicationFile"/>
+        </AsyncLogger>
+
+        <!-- S3 Connector Logger -->
+        <AsyncLogger name="org.mule.extension.s3" level="${log.level}" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="AsyncApplicationFile"/>
+        </AsyncLogger>
+
+        <!-- SFTP Connector Logger -->
+        <AsyncLogger name="org.mule.extension.sftp" level="${log.level}" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="AsyncApplicationFile"/>
+        </AsyncLogger>
+
+        <!-- Audit Logger for Business Events -->
+        <AsyncLogger name="audit" level="INFO" additivity="false">
+            <AppenderRef ref="AsyncAuditFile"/>
+        </AsyncLogger>
+
+        <!-- Mule Core Loggers -->
+        <AsyncLogger name="org.mule.runtime.core" level="WARN" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="AsyncApplicationFile"/>
+        </AsyncLogger>
+
+        <AsyncLogger name="org.mule.service" level="WARN" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="AsyncApplicationFile"/>
+        </AsyncLogger>
+
+        <!-- HTTP Connector (for health check) -->
+        <AsyncLogger name="org.mule.extension.http" level="WARN" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="AsyncApplicationFile"/>
+        </AsyncLogger>
+
+        <!-- AWS SDK Logger -->
+        <AsyncLogger name="com.amazonaws" level="WARN" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="AsyncApplicationFile"/>
+        </AsyncLogger>
+
+        <!-- Apache Commons Logger (used by SFTP) -->
+        <AsyncLogger name="org.apache.sshd" level="WARN" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="AsyncApplicationFile"/>
+        </AsyncLogger>
+
+        <!-- Security Logger -->
+        <AsyncLogger name="org.mule.module.security" level="WARN" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="AsyncApplicationFile"/>
+        </AsyncLogger>
+
+        <!-- Suppress Verbose Loggers -->
+        <AsyncLogger name="org.springframework" level="ERROR" additivity="false">
+            <AppenderRef ref="Console"/>
+        </AsyncLogger>
+
+        <AsyncLogger name="org.apache" level="ERROR" additivity="false">
+            <AppenderRef ref="Console"/>
+        </AsyncLogger>
+
+        <!-- Root Logger -->
+        <Root level="INFO">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="AsyncApplicationFile"/>
+            <AppenderRef ref="AsyncErrorFile"/>
+        </Root>
+    </Loggers>
+
+</Configuration>

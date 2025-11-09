@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:s3="http://www.mulesoft.org/schema/mule/s3"
+      xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:tls="http://www.mulesoft.org/schema/mule/tls"
+      xsi:schemaLocation="
+          http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+          http://www.mulesoft.org/schema/mule/s3 http://www.mulesoft.org/schema/mule/s3/current/mule-s3.xsd
+          http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd
+          http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+          http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd">
+
+    <!-- Configuration Properties -->
+    <configuration-properties file="properties/${env}.properties" />
+
+    <!-- Global Configuration Properties -->
+    <global-property name="mule.env" value="${env}" />
+    <global-property name="mule.encoding" value="UTF-8" />
+
+    <!-- AWS S3 Configuration -->
+    <s3:config name="Amazon_S3_Configuration" doc:name="Amazon S3 Configuration">
+        <s3:basic-connection
+            accessKey="${s3.accessKey}"
+            secretKey="${s3.secretKey}"
+            region="${s3.region}"
+            tryDefaultAWSCredentialsProviderChain="false">
+            <s3:default-headers>
+                <s3:default-header key="x-amz-server-side-encryption" value="AES256" />
+            </s3:default-headers>
+        </s3:basic-connection>
+    </s3:config>
+
+    <!-- SFTP Configuration -->
+    <sftp:config name="SFTP_Configuration" doc:name="SFTP Configuration">
+        <sftp:connection
+            host="${sftp.host}"
+            port="${sftp.port}"
+            username="${sftp.username}"
+            password="${sftp.password}"
+            workingDir="${sftp.targetFolder}"
+            connectionTimeout="${sftp.connectionTimeout}"
+            responseTimeout="${sftp.responseTimeout}">
+            <reconnection failsDeployment="true">
+                <reconnect frequency="5000" count="3"/>
+            </reconnection>
+        </sftp:connection>
+    </sftp:config>
+
+    <!-- HTTP Listener Configuration (for health check/monitoring) -->
+    <http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config">
+        <http:listener-connection host="0.0.0.0" port="8081" />
+    </http:listener-config>
+
+</mule>

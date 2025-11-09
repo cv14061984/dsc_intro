@@ -1,0 +1,65 @@
+# Mule Runtime
+.mule/
+.mule_ee/
+.mule_plugins/
+
+# Maven
+target/
+pom.xml.versionsBackup
+dependency-reduced-pom.xml
+
+# Anypoint Studio
+.studio/
+.classpath
+.project
+.settings/
+bin/
+
+# MUnit
+.munit/
+
+# Eclipse
+*.pydevproject
+.metadata
+.gradle
+bin/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+.loadpath
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Operating System
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Secure Properties
+*.secure
+
+# Environment Specific
+*.local.properties
+secure-properties.yaml
+
+# Package Files
+*.jar
+*.war
+*.ear
+
+# Backup Files
+*~
+*.orig
+*.bak

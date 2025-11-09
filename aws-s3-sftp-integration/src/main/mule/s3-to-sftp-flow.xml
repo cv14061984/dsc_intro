@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:s3="http://www.mulesoft.org/schema/mule/s3"
+      xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xsi:schemaLocation="
+          http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+          http://www.mulesoft.org/schema/mule/s3 http://www.mulesoft.org/schema/mule/s3/current/mule-s3.xsd
+          http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd
+          http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+          http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+
+    <!-- Main Flow: Daily Batch Job to Transfer Files from S3 to SFTP -->
+    <flow name="s3-to-sftp-batch-job" doc:name="S3 to SFTP Batch Job">
+        <!-- Scheduler: Runs daily at midnight -->
+        <scheduler doc:name="Daily Scheduler">
+            <scheduling-strategy>
+                <fixed-frequency frequency="${scheduler.frequency}" startDelay="${scheduler.startDelay}" timeUnit="${scheduler.timeUnit}"/>
+            </scheduling-strategy>
+        </scheduler>
+
+        <!-- Log Start of Batch Job -->
+        <logger level="INFO" doc:name="Log Batch Start" message="Starting S3 to SFTP batch job - Environment: ${env}" />
+
+        <!-- Set Initial Variables -->
+        <set-variable variableName="processedCount" value="#[0]" doc:name="Initialize Processed Count" />
+        <set-variable variableName="errorCount" value="#[0]" doc:name="Initialize Error Count" />
+        <set-variable variableName="batchStartTime" value="#[now()]" doc:name="Set Batch Start Time" />
+
+        <!-- List Files from S3 Input Folder -->
+        <s3:list-objects
+            config-ref="Amazon_S3_Configuration"
+            bucketName="${s3.bucketName}"
+            prefix="${s3.inputFolder}/"
+            doc:name="List S3 Files">
+        </s3:list-objects>
+
+        <!-- Filter CSV Files and Limit to Max Files -->
+        <ee:transform doc:name="Filter and Limit Files">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+(payload.objects filter ($.key matches /.*\.csv$/i)) [0 to ${s3.maxFiles} - 1]
+]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <!-- Log File Count -->
+        <logger level="INFO" doc:name="Log File Count" message="Found #[sizeOf(payload)] CSV files to process" />
+
+        <!-- Process Each File -->
+        <foreach doc:name="Process Each File" collection="#[payload]">
+            <flow-ref name="process-single-file-subflow" doc:name="Process Single File" />
+        </foreach>
+
+        <!-- Log Batch Completion -->
+        <logger level="INFO" doc:name="Log Batch Complete"
+            message="Batch job completed - Processed: #[vars.processedCount] files, Errors: #[vars.errorCount], Duration: #[((now() - vars.batchStartTime) as Number) / 1000] seconds" />
+
+        <set-payload value="#[%dw 2.0
+output application/json
+---
+{
+    'status': 'SUCCESS',
+    'environment': p('env'),
+    'batchStartTime': vars.batchStartTime,
+    'batchEndTime': now(),
+    'filesProcessed': vars.processedCount,
+    'errors': vars.errorCount,
+    'durationSeconds': ((now() - vars.batchStartTime) as Number) / 1000
+}]" doc:name="Set Success Response" />
+
+        <!-- Error Handler for Main Flow -->
+        <error-handler ref="global-error-handler" />
+    </flow>
+
+    <!-- Sub Flow: Process Single File -->
+    <sub-flow name="process-single-file-subflow" doc:name="Process Single File SubFlow">
+        <!-- Store File Metadata -->
+        <set-variable variableName="s3Key" value="#[payload.key]" doc:name="Store S3 Key" />
+        <set-variable variableName="fileName" value="#[payload.key splitBy '/' [-1]]" doc:name="Store File Name" />
+        <set-variable variableName="timestamp" value="#[now() as String {format: 'yyyyMMdd_HHmmss'}]" doc:name="Generate Timestamp" />
+        <set-variable variableName="archiveFileName" value="#[vars.fileName replace /\.csv$/i with '_' ++ vars.timestamp ++ '.csv']" doc:name="Create Archive Filename" />
+
+        <logger level="INFO" doc:name="Log File Processing"
+            message="Processing file: #[vars.fileName] (S3 Key: #[vars.s3Key])" />
+
+        <try doc:name="Try File Processing">
+            <!-- Get File Content from S3 -->
+            <s3:get-object
+                config-ref="Amazon_S3_Configuration"
+                bucketName="${s3.bucketName}"
+                key="#[vars.s3Key]"
+                doc:name="Get S3 Object">
+            </s3:get-object>
+
+            <!-- Store Original Content -->
+            <set-variable variableName="fileContent" value="#[payload]" doc:name="Store File Content" />
+
+            <logger level="DEBUG" doc:name="Log File Retrieved"
+                message="Retrieved file from S3: #[vars.fileName], Size: #[sizeOf(vars.fileContent)] bytes" />
+
+            <!-- Archive File to S3 -->
+            <s3:create-object
+                config-ref="Amazon_S3_Configuration"
+                bucketName="${s3.bucketName}"
+                key="#['${s3.archiveFolder}/' ++ vars.archiveFileName]"
+                content="#[vars.fileContent]"
+                doc:name="Archive to S3">
+                <s3:object-metadata>
+                    <s3:object-metadata key="original-name" value="#[vars.fileName]" />
+                    <s3:object-metadata key="archived-date" value="#[now() as String]" />
+                    <s3:object-metadata key="source-key" value="#[vars.s3Key]" />
+                </s3:object-metadata>
+            </s3:create-object>
+
+            <logger level="INFO" doc:name="Log Archive Success"
+                message="Archived file to S3: ${s3.archiveFolder}/#[vars.archiveFileName]" />
+
+            <!-- Upload File to SFTP -->
+            <sftp:write
+                config-ref="SFTP_Configuration"
+                path="#[vars.fileName]"
+                doc:name="Write to SFTP">
+                <sftp:content>#[vars.fileContent]</sftp:content>
+            </sftp:write>
+
+            <logger level="INFO" doc:name="Log SFTP Success"
+                message="Successfully transferred file to SFTP: #[vars.fileName]" />
+
+            <!-- Delete Original File from S3 Input Folder -->
+            <s3:delete-object
+                config-ref="Amazon_S3_Configuration"
+                bucketName="${s3.bucketName}"
+                key="#[vars.s3Key]"
+                doc:name="Delete S3 Source File">
+            </s3:delete-object>
+
+            <logger level="INFO" doc:name="Log Delete Success"
+                message="Deleted source file from S3: #[vars.s3Key]" />
+
+            <!-- Increment Processed Count -->
+            <set-variable variableName="processedCount" value="#[vars.processedCount + 1]" doc:name="Increment Processed Count" />
+
+            <!-- Error Handler for File Processing -->
+            <error-handler>
+                <on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue">
+                    <logger level="ERROR" doc:name="Log Processing Error"
+                        message="Error processing file #[vars.fileName]: #[error.description]" />
+
+                    <set-variable variableName="errorCount" value="#[vars.errorCount + 1]" doc:name="Increment Error Count" />
+
+                    <!-- Optionally move failed file to error folder -->
+                    <try doc:name="Try Move to Error Folder">
+                        <s3:copy-object
+                            config-ref="Amazon_S3_Configuration"
+                            sourceBucketName="${s3.bucketName}"
+                            sourceKey="#[vars.s3Key]"
+                            destinationBucketName="${s3.bucketName}"
+                            destinationKey="#['error/' ++ vars.fileName ++ '_' ++ vars.timestamp ++ '.csv']"
+                            doc:name="Copy to Error Folder">
+                        </s3:copy-object>
+
+                        <error-handler>
+                            <on-error-continue doc:name="Ignore Copy Error">
+                                <logger level="WARN" doc:name="Log Copy Error"
+                                    message="Could not copy file to error folder: #[vars.fileName]" />
+                            </on-error-continue>
+                        </error-handler>
+                    </try>
+                </on-error-continue>
+            </error-handler>
+        </try>
+    </sub-flow>
+
+    <!-- Health Check Flow -->
+    <flow name="health-check-flow" doc:name="Health Check Flow">
+        <http:listener
+            config-ref="HTTP_Listener_config"
+            path="/health"
+            doc:name="Health Check Listener">
+        </http:listener>
+
+        <set-payload value="#[%dw 2.0
+output application/json
+---
+{
+    'status': 'UP',
+    'application': 'aws-s3-sftp-integration',
+    'environment': p('env'),
+    'timestamp': now(),
+    'version': '1.0.0'
+}]" doc:name="Set Health Response" />
+
+        <logger level="DEBUG" doc:name="Log Health Check" message="Health check requested" />
+    </flow>
+
+</mule>

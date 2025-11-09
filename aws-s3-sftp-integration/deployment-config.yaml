@@ -1,0 +1,125 @@
+# MuleSoft Deployment Configuration
+# This file contains deployment configurations for different environments
+
+---
+# Development Environment
+development:
+  environment: Development
+  runtime: 4.4.0
+  workers: 1
+  workerType: MICRO
+  region: us-east-1
+  objectStoreV2: true
+  persistentQueues: false
+  properties:
+    env: dev
+    mule.env: dev
+    anypoint.platform.config.analytics.agent.enabled: true
+  loggingLevel: DEBUG
+  monitoringAutoRestart: true
+  staticIPs: false
+
+---
+# Staging Environment
+staging:
+  environment: Staging
+  runtime: 4.4.0
+  workers: 1
+  workerType: SMALL
+  region: us-east-1
+  objectStoreV2: true
+  persistentQueues: true
+  properties:
+    env: prod
+    mule.env: staging
+    anypoint.platform.config.analytics.agent.enabled: true
+  loggingLevel: INFO
+  monitoringAutoRestart: true
+  staticIPs: false
+
+---
+# Production Environment
+production:
+  environment: Production
+  runtime: 4.4.0
+  workers: 2
+  workerType: SMALL
+  region: us-east-1
+  objectStoreV2: true
+  persistentQueues: true
+  properties:
+    env: prod
+    mule.env: prod
+    anypoint.platform.config.analytics.agent.enabled: true
+    anypoint.platform.config.analytics.handler.enabled: true
+  loggingLevel: INFO
+  monitoringAutoRestart: true
+  staticIPs: false
+  # High availability configuration
+  clustering: true
+  lastMileSecurity: true
+
+---
+# On-Premises Deployment Configuration
+onpremises:
+  runtime: 4.4.0
+  jvmOptions:
+    - "-Xmx2048m"
+    - "-Xms1024m"
+    - "-XX:+UseG1GC"
+    - "-Denv=prod"
+    - "-Dmule.env=prod"
+  properties:
+    env: prod
+    mule.env: prod
+  wrapperConfig:
+    - "wrapper.java.additional.1=-Denv=prod"
+    - "wrapper.java.additional.2=-Dmule.env=prod"
+    - "wrapper.java.additional.3=-Xmx2048m"
+    - "wrapper.java.additional.4=-Xms1024m"
+    - "wrapper.java.additional.5=-XX:+UseG1GC"
+  clustering:
+    enabled: true
+    nodes: 2
+    multicastEnabled: false
+
+---
+# Deployment Commands
+
+# CloudHub Deployment - Development
+# mvn deploy -DmuleDeploy \
+#   -Dmule.version=4.4.0 \
+#   -Danypoint.username=${ANYPOINT_USERNAME} \
+#   -Danypoint.password=${ANYPOINT_PASSWORD} \
+#   -Denvironment=Development \
+#   -Dworkers=1 \
+#   -DworkerType=MICRO \
+#   -Dregion=us-east-1 \
+#   -DobjectStoreV2=true \
+#   -Dmule.env=dev
+
+# CloudHub Deployment - Production
+# mvn deploy -DmuleDeploy \
+#   -Dmule.version=4.4.0 \
+#   -Danypoint.username=${ANYPOINT_USERNAME} \
+#   -Danypoint.password=${ANYPOINT_PASSWORD} \
+#   -Denvironment=Production \
+#   -Dworkers=2 \
+#   -DworkerType=SMALL \
+#   -Dregion=us-east-1 \
+#   -DobjectStoreV2=true \
+#   -DpersistentQueues=true \
+#   -Dmule.env=prod
+
+# Runtime Manager (Hybrid) Deployment via REST API
+# curl -X POST \
+#   https://anypoint.mulesoft.com/hybrid/api/v1/applications \
+#   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+#   -H "Content-Type: application/json" \
+#   -d '{
+#     "artifact": "aws-s3-sftp-integration-1.0.0.jar",
+#     "targetId": "${TARGET_ID}",
+#     "configuration": {
+#       "mule.env": "prod"
+#     }
+#   }'

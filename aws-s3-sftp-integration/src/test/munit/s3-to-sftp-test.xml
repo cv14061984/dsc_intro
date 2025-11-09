@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
+      xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+      xmlns:s3="http://www.mulesoft.org/schema/mule/s3"
+      xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp"
+      xsi:schemaLocation="
+          http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+          http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+          http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd
+          http://www.mulesoft.org/schema/mule/s3 http://www.mulesoft.org/schema/mule/s3/current/mule-s3.xsd
+          http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd">
+
+    <munit:config name="s3-to-sftp-test.xml" />
+
+    <!-- Test Configuration -->
+    <configuration-properties file="properties/dev.properties" />
+
+    <!-- Test: Health Check Endpoint Returns Success -->
+    <munit:test name="health-check-returns-success-test" description="Test health check endpoint">
+        <munit:execution>
+            <flow-ref name="health-check-flow"/>
+        </munit:execution>
+
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload.status]" is="#[MunitTools::equalTo('UP')]"/>
+            <munit-tools:assert-that expression="#[payload.application]" is="#[MunitTools::equalTo('aws-s3-sftp-integration')]"/>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test: Process Single File Subflow with Mocked S3 and SFTP -->
+    <munit:test name="process-single-file-success-test" description="Test successful file processing">
+        <munit:behavior>
+            <!-- Mock S3 Get Object -->
+            <munit-tools:mock-when processor="s3:get-object">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute whereValue="Get S3 Object" attributeName="doc:name"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#['id,name,email,department
+1,John Doe,john@example.com,IT
+2,Jane Smith,jane@example.com,HR
+3,Bob Johnson,bob@example.com,Finance']" encoding="UTF-8"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+
+            <!-- Mock S3 Create Object (Archive) -->
+            <munit-tools:mock-when processor="s3:create-object">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute whereValue="Archive to S3" attributeName="doc:name"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[true]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+
+            <!-- Mock SFTP Write -->
+            <munit-tools:mock-when processor="sftp:write">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute whereValue="Write to SFTP" attributeName="doc:name"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[true]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+
+            <!-- Mock S3 Delete Object -->
+            <munit-tools:mock-when processor="s3:delete-object">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute whereValue="Delete S3 Source File" attributeName="doc:name"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[true]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+
+        <munit:execution>
+            <!-- Set up test payload -->
+            <set-payload value="#[{
+                'key': 'input/employee_data.csv',
+                'size': 1024,
+                'lastModified': now()
+            }]" />
+
+            <!-- Execute the subflow -->
+            <flow-ref name="process-single-file-subflow"/>
+        </munit:execution>
+
+        <munit:validation>
+            <!-- Verify S3 operations were called -->
+            <munit-tools:verify-call processor="s3:get-object" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute whereValue="Get S3 Object" attributeName="doc:name"/>
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+
+            <munit-tools:verify-call processor="s3:create-object" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute whereValue="Archive to S3" attributeName="doc:name"/>
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+
+            <munit-tools:verify-call processor="sftp:write" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute whereValue="Write to SFTP" attributeName="doc:name"/>
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+
+            <munit-tools:verify-call processor="s3:delete-object" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute whereValue="Delete S3 Source File" attributeName="doc:name"/>
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+
+            <!-- Verify variables were set correctly -->
+            <munit-tools:assert-that expression="#[vars.processedCount]" is="#[MunitTools::equalTo(1)]"/>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test: File Processing with S3 Error -->
+    <munit:test name="process-file-s3-error-test" description="Test handling of S3 errors" expectedErrorType="S3:CONNECTIVITY">
+        <munit:behavior>
+            <!-- Mock S3 Get Object to throw error -->
+            <munit-tools:mock-when processor="s3:get-object">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute whereValue="Get S3 Object" attributeName="doc:name"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="S3:CONNECTIVITY"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+
+        <munit:execution>
+            <set-payload value="#[{
+                'key': 'input/employee_data.csv',
+                'size': 1024,
+                'lastModified': now()
+            }]" />
+
+            <try>
+                <flow-ref name="process-single-file-subflow"/>
+                <error-handler>
+                    <on-error-propagate type="S3:CONNECTIVITY">
+                        <set-payload value="#['S3 Error Caught']"/>
+                    </on-error-propagate>
+                </error-handler>
+            </try>
+        </munit:execution>
+
+        <munit:validation>
+            <munit-tools:assert-that expression="#[vars.errorCount]" is="#[MunitTools::greaterThan(0)]"/>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test: File Filtering Logic -->
+    <munit:test name="filter-csv-files-test" description="Test CSV file filtering">
+        <munit:execution>
+            <set-payload value="#[[
+                {key: 'input/file1.csv', size: 1024},
+                {key: 'input/file2.txt', size: 2048},
+                {key: 'input/file3.CSV', size: 512},
+                {key: 'input/file4.pdf', size: 3072},
+                {key: 'input/file5.csv', size: 256}
+            ]]" />
+
+            <ee:transform xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+payload filter ($.key matches /.*\.csv$/i)]]></ee:set-payload>
+                </ee:message>
+            </ee:transform>
+        </munit:execution>
+
+        <munit:validation>
+            <!-- Should have 3 CSV files -->
+            <munit-tools:assert-that expression="#[sizeOf(payload)]" is="#[MunitTools::equalTo(3)]"/>
+
+            <!-- All files should have .csv extension -->
+            <munit-tools:assert-that
+                expression="#[payload every ($.key matches /.*\.csv$/i)]"
+                is="#[MunitTools::equalTo(true)]"/>
+        </munit:validation>
+    </munit:test>
+
+</mule>

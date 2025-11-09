@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:s3="http://www.mulesoft.org/schema/mule/s3"
+      xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xsi:schemaLocation="
+          http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+          http://www.mulesoft.org/schema/mule/s3 http://www.mulesoft.org/schema/mule/s3/current/mule-s3.xsd
+          http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd
+          http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <!-- Global Error Handler -->
+    <error-handler name="global-error-handler" doc:name="Global Error Handler">
+
+        <!-- S3 Connectivity Errors -->
+        <on-error-propagate type="S3:CONNECTIVITY" enableNotifications="true" logException="true" doc:name="S3 Connectivity Error">
+            <logger level="ERROR" doc:name="Log S3 Connectivity Error"
+                message="S3 Connectivity Error - Unable to connect to AWS S3: #[error.description]" />
+
+            <set-variable variableName="errorDetails" value="#[%dw 2.0
+output application/json
+---
+{
+    'errorType': 'S3_CONNECTIVITY',
+    'errorMessage': error.description,
+    'timestamp': now(),
+    'environment': p('env'),
+    'recommendation': 'Check AWS credentials, network connectivity, and S3 bucket accessibility'
+}]" doc:name="Set Error Details" />
+
+            <logger level="ERROR" doc:name="Log Error Details" message="#[vars.errorDetails]" />
+        </on-error-propagate>
+
+        <!-- S3 Access Denied Errors -->
+        <on-error-propagate type="S3:ACCESS_DENIED" enableNotifications="true" logException="true" doc:name="S3 Access Denied">
+            <logger level="ERROR" doc:name="Log S3 Access Denied"
+                message="S3 Access Denied - Check IAM permissions: #[error.description]" />
+
+            <set-variable variableName="errorDetails" value="#[%dw 2.0
+output application/json
+---
+{
+    'errorType': 'S3_ACCESS_DENIED',
+    'errorMessage': error.description,
+    'timestamp': now(),
+    'environment': p('env'),
+    'recommendation': 'Verify IAM user/role has s3:GetObject, s3:PutObject, s3:DeleteObject, s3:ListBucket permissions'
+}]" doc:name="Set Error Details" />
+
+            <logger level="ERROR" doc:name="Log Error Details" message="#[vars.errorDetails]" />
+        </on-error-propagate>
+
+        <!-- S3 No Such Key Error -->
+        <on-error-continue type="S3:NO_SUCH_KEY" enableNotifications="true" logException="true" doc:name="S3 No Such Key">
+            <logger level="WARN" doc:name="Log S3 No Such Key"
+                message="S3 file not found - Key may have been deleted: #[error.description]" />
+        </on-error-continue>
+
+        <!-- SFTP Connectivity Errors -->
+        <on-error-propagate type="SFTP:CONNECTIVITY" enableNotifications="true" logException="true" doc:name="SFTP Connectivity Error">
+            <logger level="ERROR" doc:name="Log SFTP Connectivity Error"
+                message="SFTP Connectivity Error - Unable to connect to SFTP server: #[error.description]" />
+
+            <set-variable variableName="errorDetails" value="#[%dw 2.0
+output application/json
+---
+{
+    'errorType': 'SFTP_CONNECTIVITY',
+    'errorMessage': error.description,
+    'timestamp': now(),
+    'environment': p('env'),
+    'sftpHost': p('sftp.host'),
+    'sftpPort': p('sftp.port'),
+    'recommendation': 'Check SFTP server availability, network connectivity, and firewall rules'
+}]" doc:name="Set Error Details" />
+
+            <logger level="ERROR" doc:name="Log Error Details" message="#[vars.errorDetails]" />
+        </on-error-propagate>
+
+        <!-- SFTP Authentication Errors -->
+        <on-error-propagate type="SFTP:INVALID_CREDENTIALS" enableNotifications="true" logException="true" doc:name="SFTP Invalid Credentials">
+            <logger level="ERROR" doc:name="Log SFTP Auth Error"
+                message="SFTP Authentication Failed - Check credentials: #[error.description]" />
+
+            <set-variable variableName="errorDetails" value="#[%dw 2.0
+output application/json
+---
+{
+    'errorType': 'SFTP_AUTHENTICATION_FAILED',
+    'errorMessage': error.description,
+    'timestamp': now(),
+    'environment': p('env'),
+    'sftpHost': p('sftp.host'),
+    'sftpUsername': p('sftp.username'),
+    'recommendation': 'Verify SFTP username and password are correct'
+}]" doc:name="Set Error Details" />
+
+            <logger level="ERROR" doc:name="Log Error Details" message="#[vars.errorDetails]" />
+        </on-error-propagate>
+
+        <!-- SFTP File Access Errors -->
+        <on-error-continue type="SFTP:ILLEGAL_PATH" enableNotifications="true" logException="true" doc:name="SFTP Illegal Path">
+            <logger level="ERROR" doc:name="Log SFTP Path Error"
+                message="SFTP Path Error - Invalid or inaccessible path: #[error.description]" />
+
+            <set-variable variableName="errorDetails" value="#[%dw 2.0
+output application/json
+---
+{
+    'errorType': 'SFTP_PATH_ERROR',
+    'errorMessage': error.description,
+    'timestamp': now(),
+    'environment': p('env'),
+    'targetFolder': p('sftp.targetFolder'),
+    'recommendation': 'Verify SFTP target folder exists and user has write permissions'
+}]" doc:name="Set Error Details" />
+
+            <logger level="ERROR" doc:name="Log Error Details" message="#[vars.errorDetails]" />
+        </on-error-continue>
+
+        <!-- Transformation Errors -->
+        <on-error-propagate type="MULE:TRANSFORMATION" enableNotifications="true" logException="true" doc:name="Transformation Error">
+            <logger level="ERROR" doc:name="Log Transformation Error"
+                message="Data Transformation Error: #[error.description]" />
+
+            <set-variable variableName="errorDetails" value="#[%dw 2.0
+output application/json
+---
+{
+    'errorType': 'TRANSFORMATION_ERROR',
+    'errorMessage': error.description,
+    'timestamp': now(),
+    'environment': p('env'),
+    'recommendation': 'Check DataWeave transformation logic and input data format'
+}]" doc:name="Set Error Details" />
+
+            <logger level="ERROR" doc:name="Log Error Details" message="#[vars.errorDetails]" />
+        </on-error-propagate>
+
+        <!-- Expression Errors -->
+        <on-error-propagate type="MULE:EXPRESSION" enableNotifications="true" logException="true" doc:name="Expression Error">
+            <logger level="ERROR" doc:name="Log Expression Error"
+                message="Expression Evaluation Error: #[error.description]" />
+
+            <set-variable variableName="errorDetails" value="#[%dw 2.0
+output application/json
+---
+{
+    'errorType': 'EXPRESSION_ERROR',
+    'errorMessage': error.description,
+    'timestamp': now(),
+    'environment': p('env'),
+    'recommendation': 'Check DataWeave expressions and variable references'
+}]" doc:name="Set Error Details" />
+
+            <logger level="ERROR" doc:name="Log Error Details" message="#[vars.errorDetails]" />
+        </on-error-propagate>
+
+        <!-- Timeout Errors -->
+        <on-error-propagate type="MULE:TIMEOUT" enableNotifications="true" logException="true" doc:name="Timeout Error">
+            <logger level="ERROR" doc:name="Log Timeout Error"
+                message="Operation Timeout: #[error.description]" />
+
+            <set-variable variableName="errorDetails" value="#[%dw 2.0
+output application/json
+---
+{
+    'errorType': 'TIMEOUT',
+    'errorMessage': error.description,
+    'timestamp': now(),
+    'environment': p('env'),
+    'recommendation': 'Increase timeout values or check system performance'
+}]" doc:name="Set Error Details" />
+
+            <logger level="ERROR" doc:name="Log Error Details" message="#[vars.errorDetails]" />
+        </on-error-propagate>
+
+        <!-- Retry Exhausted Errors -->
+        <on-error-propagate type="MULE:RETRY_EXHAUSTED" enableNotifications="true" logException="true" doc:name="Retry Exhausted">
+            <logger level="ERROR" doc:name="Log Retry Exhausted"
+                message="Retry Exhausted - Operation failed after multiple attempts: #[error.description]" />
+
+            <set-variable variableName="errorDetails" value="#[%dw 2.0
+output application/json
+---
+{
+    'errorType': 'RETRY_EXHAUSTED',
+    'errorMessage': error.description,
+    'timestamp': now(),
+    'environment': p('env'),
+    'recommendation': 'Manual intervention required - check system logs and connectivity'
+}]" doc:name="Set Error Details" />
+
+            <logger level="ERROR" doc:name="Log Error Details" message="#[vars.errorDetails]" />
+        </on-error-propagate>
+
+        <!-- Generic/Unknown Errors -->
+        <on-error-propagate type="ANY" enableNotifications="true" logException="true" doc:name="Any Error">
+            <logger level="ERROR" doc:name="Log Generic Error"
+                message="Unexpected Error occurred: #[error.description]" />
+
+            <set-variable variableName="errorDetails" value="#[%dw 2.0
+output application/json
+---
+{
+    'errorType': 'UNEXPECTED_ERROR',
+    'errorMessage': error.description,
+    'errorCause': error.cause.message default '',
+    'timestamp': now(),
+    'environment': p('env'),
+    'recommendation': 'Check application logs for detailed error information'
+}]" doc:name="Set Error Details" />
+
+            <logger level="ERROR" doc:name="Log Error Details" message="#[vars.errorDetails]" />
+
+            <set-payload value="#[vars.errorDetails]" doc:name="Set Error Response" />
+        </on-error-propagate>
+
+    </error-handler>
+
+</mule>

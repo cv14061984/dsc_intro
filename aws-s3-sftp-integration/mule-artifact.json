@@ -1,0 +1,25 @@
+{
+  "minMuleVersion": "4.4.0",
+  "secureProperties": [
+    "s3.accessKey",
+    "s3.secretKey",
+    "sftp.password"
+  ],
+  "configs": [
+    "global-config.xml",
+    "s3-to-sftp-flow.xml",
+    "error-handler.xml"
+  ],
+  "redeploymentEnabled": true,
+  "name": "aws-s3-sftp-integration",
+  "classLoaderModelLoaderDescriptor": {
+    "id": "mule",
+    "attributes": {
+      "exportedResources": []
+    }
+  },
+  "bundleDescriptorLoader": {
+    "id": "mule",
+    "attributes": {}
+  }
+}
