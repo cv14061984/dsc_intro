@@ -1,5 +1,19 @@
 .ipynb_checkpoints
-*.json
 *.csv
 *.png
 *.sql
+
+# MuleSoft specific ignores
+target/
+.mule/
+.studio/
+.settings/
+.classpath
+.project
+*.iml
+.idea/
+*.log
+
+# Keep important JSON files
+!mule-artifact.json
+!package.json

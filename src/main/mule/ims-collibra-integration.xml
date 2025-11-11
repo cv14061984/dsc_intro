@@ -1,0 +1,239 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:batch="http://www.mulesoft.org/schema/mule/batch"
+      xmlns:schedulers="http://www.mulesoft.org/schema/mule/schedulers"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd
+        http://www.mulesoft.org/schema/mule/schedulers http://www.mulesoft.org/schema/mule/schedulers/current/mule-schedulers.xsd">
+
+    <!-- Main Scheduler Flow -->
+    <flow name="ims-collibra-sync-scheduler-flow">
+        <scheduler doc:name="Weekly Scheduler">
+            <scheduling-strategy>
+                <fixed-frequency frequency="${scheduler.frequency}" startDelay="${scheduler.startDelay}"/>
+            </scheduling-strategy>
+        </scheduler>
+
+        <logger level="INFO" message="Starting IMS-Collibra User Status Sync - Correlation ID: #[correlationId]"
+                category="com.shell.ims.collibra.scheduler"/>
+
+        <!-- Set Initial Variables -->
+        <set-variable variableName="startTime" value="#[now()]"/>
+        <set-variable variableName="processedCount" value="#[0]"/>
+        <set-variable variableName="successCount" value="#[0]"/>
+        <set-variable variableName="failureCount" value="#[0]"/>
+
+        <try>
+            <!-- Call subflow to get leaver users from IMS -->
+            <flow-ref name="get-ims-leaver-users-subflow"/>
+
+            <!-- Process users in batch -->
+            <flow-ref name="process-users-batch-job"/>
+
+            <logger level="INFO" message="IMS-Collibra Sync Completed Successfully - Total: #[vars.processedCount], Success: #[vars.successCount], Failures: #[vars.failureCount]"
+                    category="com.shell.ims.collibra.scheduler"/>
+
+            <error-handler ref="Global_Error_Handler"/>
+        </try>
+    </flow>
+
+    <!-- Subflow: Get Leaver Users from IMS SCIM API -->
+    <sub-flow name="get-ims-leaver-users-subflow">
+        <logger level="INFO" message="Fetching leaver users from IMS SCIM API"
+                category="com.shell.ims.collibra.scim"/>
+
+        <!-- Prepare SCIM Search Request -->
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "filter": "lastEvent eq \"Leaver\"",
+    "attributes": ["userName", "lastEvent", "statusChangeDate", "identityStatus"]
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <!-- Call IMS SCIM API -->
+        <http:request method="POST"
+                      path="${ims.scim.basepath}${ims.scim.search.path}"
+                      config-ref="IMS_SCIM_HTTP_Request_Config"
+                      responseTimeout="${http.responseTimeout}">
+            <http:headers><![CDATA[#[output application/java
+---
+{
+    "X-Correlation-Id": correlationId
+}]]]></http:headers>
+        </http:request>
+
+        <logger level="INFO" message="Retrieved #[sizeOf(payload.Resources)] leaver users from IMS"
+                category="com.shell.ims.collibra.scim"/>
+
+        <!-- Transform response to extract user list -->
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload.Resources default []]]></ee:set-payload>
+            </ee:message>
+            <ee:variables>
+                <ee:set-variable variableName="processedCount"><![CDATA[%dw 2.0
+output application/java
+---
+sizeOf(payload.Resources default [])]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <choice>
+            <when expression="#[isEmpty(payload)]">
+                <logger level="INFO" message="No leaver users found in IMS"
+                        category="com.shell.ims.collibra.scim"/>
+            </when>
+        </choice>
+
+    </sub-flow>
+
+    <!-- Batch Job: Process Users -->
+    <batch:job name="process-users-batch-job" maxFailedRecords="-1">
+        <batch:process-records>
+            <batch:step name="update-collibra-user-status-step">
+                <logger level="INFO" message="Processing user: #[payload.userName]"
+                        category="com.shell.ims.collibra.batch"/>
+
+                <try>
+                    <!-- Store user data in variables -->
+                    <set-variable variableName="userEmail" value="#[payload.userName]"/>
+                    <set-variable variableName="lastEvent" value="#[payload.lastEvent]"/>
+                    <set-variable variableName="statusChangeDate" value="#[payload.statusChangeDate]"/>
+
+                    <!-- Step 1: Get User Details from Collibra -->
+                    <flow-ref name="get-collibra-user-subflow"/>
+
+                    <!-- Step 2: Update User Status in Collibra -->
+                    <flow-ref name="update-collibra-user-status-subflow"/>
+
+                    <logger level="INFO" message="Successfully updated user #[vars.userEmail] in Collibra"
+                            category="com.shell.ims.collibra.batch"/>
+
+                    <set-variable variableName="successCount" value="#[vars.successCount + 1]"/>
+
+                    <error-handler>
+                        <on-error-continue type="ANY" logException="true">
+                            <logger level="ERROR" message="Failed to process user #[vars.userEmail]: #[error.description]"
+                                    category="com.shell.ims.collibra.batch"/>
+                            <set-variable variableName="failureCount" value="#[vars.failureCount + 1]"/>
+                        </on-error-continue>
+                    </error-handler>
+                </try>
+            </batch:step>
+        </batch:process-records>
+
+        <batch:on-complete>
+            <logger level="INFO" message="Batch processing completed - Total Records: #[payload.totalRecords], Successful: #[payload.successfulRecords], Failed: #[payload.failedRecords]"
+                    category="com.shell.ims.collibra.batch"/>
+        </batch:on-complete>
+    </batch:job>
+
+    <!-- Subflow: Get User Details from Collibra -->
+    <sub-flow name="get-collibra-user-subflow">
+        <logger level="DEBUG" message="Fetching user details from Collibra for: #[vars.userEmail]"
+                category="com.shell.ims.collibra.api"/>
+
+        <!-- Call Collibra GET Users API with email filter -->
+        <http:request method="GET"
+                      path="${collibra.basepath}${collibra.users.path}"
+                      config-ref="Collibra_HTTP_Request_Config"
+                      responseTimeout="${http.responseTimeout}">
+            <http:query-params><![CDATA[#[output application/java
+---
+{
+    "emailAddress": vars.userEmail,
+    "limit": 1
+}]]]></http:query-params>
+            <http:headers><![CDATA[#[output application/java
+---
+{
+    "X-Correlation-Id": correlationId
+}]]]></http:headers>
+        </http:request>
+
+        <!-- Extract User ID from response -->
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+            </ee:message>
+            <ee:variables>
+                <ee:set-variable variableName="collibraUserId"><![CDATA[%dw 2.0
+output application/java
+---
+if (!isEmpty(payload.results))
+    payload.results[0].id
+else
+    null]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <!-- Validate User Found -->
+        <choice>
+            <when expression="#[vars.collibraUserId == null]">
+                <logger level="WARN" message="User not found in Collibra: #[vars.userEmail]"
+                        category="com.shell.ims.collibra.api"/>
+                <raise-error type="APP:USER_NOT_FOUND" description="#['User not found in Collibra: ' ++ vars.userEmail]"/>
+            </when>
+            <otherwise>
+                <logger level="DEBUG" message="Found Collibra user ID: #[vars.collibraUserId] for email: #[vars.userEmail]"
+                        category="com.shell.ims.collibra.api"/>
+            </otherwise>
+        </choice>
+    </sub-flow>
+
+    <!-- Subflow: Update User Status in Collibra -->
+    <sub-flow name="update-collibra-user-status-subflow">
+        <logger level="DEBUG" message="Updating user status in Collibra - User ID: #[vars.collibraUserId], Email: #[vars.userEmail]"
+                category="com.shell.ims.collibra.api"/>
+
+        <!-- Prepare PATCH Request Payload -->
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "enabled": false
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <!-- Call Collibra PATCH User API -->
+        <http:request method="PATCH"
+                      path="#['${collibra.basepath}${collibra.users.path}/' ++ vars.collibraUserId]"
+                      config-ref="Collibra_HTTP_Request_Config"
+                      responseTimeout="${http.responseTimeout}">
+            <http:headers><![CDATA[#[output application/java
+---
+{
+    "X-Correlation-Id": correlationId
+}]]]></http:headers>
+        </http:request>
+
+        <logger level="INFO" message="Successfully disabled user in Collibra - User ID: #[vars.collibraUserId], Email: #[vars.userEmail]"
+                category="com.shell.ims.collibra.api"/>
+
+        <!-- Log the update for audit trail -->
+        <logger level="INFO"
+                message="#['User Status Updated - Email: ' ++ vars.userEmail ++ ', Collibra User ID: ' ++ vars.collibraUserId ++ ', Status Change Date: ' ++ vars.statusChangeDate ++ ', Last Event: ' ++ vars.lastEvent]"
+                category="com.shell.ims.collibra.audit"/>
+    </sub-flow>
+
+</mule>

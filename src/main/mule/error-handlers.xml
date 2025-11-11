@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <!-- Global Error Handler -->
+    <error-handler name="Global_Error_Handler">
+
+        <!-- HTTP Connectivity Errors -->
+        <on-error-propagate type="HTTP:CONNECTIVITY" enableNotifications="true" logException="true">
+            <logger level="ERROR" message="HTTP Connectivity Error: #[error.description]" category="com.shell.ims.collibra.error"/>
+            <ee:transform>
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    errorType: "CONNECTIVITY_ERROR",
+    errorMessage: error.description,
+    timestamp: now(),
+    correlationId: correlationId
+}]]></ee:set-payload>
+                </ee:message>
+            </ee:transform>
+        </on-error-propagate>
+
+        <!-- HTTP Timeout Errors -->
+        <on-error-propagate type="HTTP:TIMEOUT" enableNotifications="true" logException="true">
+            <logger level="ERROR" message="HTTP Timeout Error: #[error.description]" category="com.shell.ims.collibra.error"/>
+            <ee:transform>
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    errorType: "TIMEOUT_ERROR",
+    errorMessage: error.description,
+    timestamp: now(),
+    correlationId: correlationId
+}]]></ee:set-payload>
+                </ee:message>
+            </ee:transform>
+        </on-error-propagate>
+
+        <!-- HTTP Client Errors (4xx) -->
+        <on-error-propagate type="HTTP:BAD_REQUEST, HTTP:UNAUTHORIZED, HTTP:FORBIDDEN, HTTP:NOT_FOUND" enableNotifications="true" logException="true">
+            <logger level="ERROR" message="HTTP Client Error: #[error.description]" category="com.shell.ims.collibra.error"/>
+            <ee:transform>
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    errorType: "CLIENT_ERROR",
+    errorMessage: error.description,
+    statusCode: error.errorMessage.attributes.statusCode default "",
+    timestamp: now(),
+    correlationId: correlationId
+}]]></ee:set-payload>
+                </ee:message>
+            </ee:transform>
+        </on-error-propagate>
+
+        <!-- HTTP Server Errors (5xx) -->
+        <on-error-propagate type="HTTP:INTERNAL_SERVER_ERROR, HTTP:SERVICE_UNAVAILABLE" enableNotifications="true" logException="true">
+            <logger level="ERROR" message="HTTP Server Error: #[error.description]" category="com.shell.ims.collibra.error"/>
+            <ee:transform>
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    errorType: "SERVER_ERROR",
+    errorMessage: error.description,
+    statusCode: error.errorMessage.attributes.statusCode default "",
+    timestamp: now(),
+    correlationId: correlationId
+}]]></ee:set-payload>
+                </ee:message>
+            </ee:transform>
+        </on-error-propagate>
+
+        <!-- Transformation Errors -->
+        <on-error-propagate type="EXPRESSION, TRANSFORMATION" enableNotifications="true" logException="true">
+            <logger level="ERROR" message="Transformation Error: #[error.description]" category="com.shell.ims.collibra.error"/>
+            <ee:transform>
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    errorType: "TRANSFORMATION_ERROR",
+    errorMessage: error.description,
+    timestamp: now(),
+    correlationId: correlationId
+}]]></ee:set-payload>
+                </ee:message>
+            </ee:transform>
+        </on-error-propagate>
+
+        <!-- Generic Error Handler -->
+        <on-error-propagate type="ANY" enableNotifications="true" logException="true">
+            <logger level="ERROR" message="Unexpected Error: #[error.description]" category="com.shell.ims.collibra.error"/>
+            <ee:transform>
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    errorType: "UNKNOWN_ERROR",
+    errorMessage: error.description,
+    timestamp: now(),
+    correlationId: correlationId
+}]]></ee:set-payload>
+                </ee:message>
+            </ee:transform>
+        </on-error-propagate>
+    </error-handler>
+
+</mule>

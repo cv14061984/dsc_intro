@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
+      xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+        http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+
+    <!-- MUnit Test Suite for IMS-Collibra Integration -->
+    <munit:config name="ims-collibra-integration-test-suite"/>
+
+    <!-- Test: Get IMS Leaver Users - Success -->
+    <munit:test name="test-get-ims-leaver-users-success" description="Test successful retrieval of leaver users from IMS">
+        <munit:behavior>
+            <set-variable variableName="expectedUsers" value="#[[{'userName': 'test.user@shell.com', 'lastEvent': 'Leaver', 'statusChangeDate': '2024-11-01'}]]"/>
+
+            <!-- Mock IMS SCIM API Response -->
+            <munit-tools:mock-when doc:name="Mock IMS SCIM API" processor="http:request">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="config-ref" whereValue="IMS_SCIM_HTTP_Request_Config"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[{
+                        'Resources': [
+                            {
+                                'userName': 'test.user@shell.com',
+                                'lastEvent': 'Leaver',
+                                'statusChangeDate': '2024-11-01',
+                                'identityStatus': 'Inactive'
+                            }
+                        ]
+                    }]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+
+        <munit:execution>
+            <flow-ref name="get-ims-leaver-users-subflow"/>
+        </munit:execution>
+
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload]" is="#[MunitTools::notNullValue()]"/>
+            <munit-tools:assert-that expression="#[sizeOf(payload)]" is="#[MunitTools::equalTo(1)]"/>
+            <munit-tools:assert-that expression="#[payload[0].userName]" is="#[MunitTools::equalTo('test.user@shell.com')]"/>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test: Get IMS Leaver Users - Empty Result -->
+    <munit:test name="test-get-ims-leaver-users-empty" description="Test when no leaver users found">
+        <munit:behavior>
+            <!-- Mock IMS SCIM API Response with empty results -->
+            <munit-tools:mock-when doc:name="Mock IMS SCIM API Empty" processor="http:request">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="config-ref" whereValue="IMS_SCIM_HTTP_Request_Config"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[{'Resources': []}]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+
+        <munit:execution>
+            <flow-ref name="get-ims-leaver-users-subflow"/>
+        </munit:execution>
+
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload]" is="#[MunitTools::notNullValue()]"/>
+            <munit-tools:assert-that expression="#[isEmpty(payload)]" is="#[MunitTools::equalTo(true)]"/>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test: Get Collibra User - Success -->
+    <munit:test name="test-get-collibra-user-success" description="Test successful retrieval of user from Collibra">
+        <munit:behavior>
+            <set-variable variableName="userEmail" value="test.user@shell.com"/>
+
+            <!-- Mock Collibra GET API Response -->
+            <munit-tools:mock-when doc:name="Mock Collibra GET API" processor="http:request">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="config-ref" whereValue="Collibra_HTTP_Request_Config"/>
+                    <munit-tools:with-attribute attributeName="method" whereValue="GET"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[{
+                        'results': [
+                            {
+                                'id': '12345',
+                                'userName': 'test.user',
+                                'emailAddress': 'test.user@shell.com',
+                                'enabled': true
+                            }
+                        ]
+                    }]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+
+        <munit:execution>
+            <flow-ref name="get-collibra-user-subflow"/>
+        </munit:execution>
+
+        <munit:validation>
+            <munit-tools:assert-that expression="#[vars.collibraUserId]" is="#[MunitTools::equalTo('12345')]"/>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test: Get Collibra User - Not Found -->
+    <munit:test name="test-get-collibra-user-not-found" description="Test when user not found in Collibra" expectedErrorType="APP:USER_NOT_FOUND">
+        <munit:behavior>
+            <set-variable variableName="userEmail" value="nonexistent@shell.com"/>
+
+            <!-- Mock Collibra GET API Response with empty results -->
+            <munit-tools:mock-when doc:name="Mock Collibra GET API Empty" processor="http:request">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="config-ref" whereValue="Collibra_HTTP_Request_Config"/>
+                    <munit-tools:with-attribute attributeName="method" whereValue="GET"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[{'results': []}]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+
+        <munit:execution>
+            <flow-ref name="get-collibra-user-subflow"/>
+        </munit:execution>
+    </munit:test>
+
+    <!-- Test: Update Collibra User Status - Success -->
+    <munit:test name="test-update-collibra-user-status-success" description="Test successful update of user status in Collibra">
+        <munit:behavior>
+            <set-variable variableName="collibraUserId" value="12345"/>
+            <set-variable variableName="userEmail" value="test.user@shell.com"/>
+            <set-variable variableName="statusChangeDate" value="2024-11-01"/>
+            <set-variable variableName="lastEvent" value="Leaver"/>
+
+            <!-- Mock Collibra PATCH API Response -->
+            <munit-tools:mock-when doc:name="Mock Collibra PATCH API" processor="http:request">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="config-ref" whereValue="Collibra_HTTP_Request_Config"/>
+                    <munit-tools:with-attribute attributeName="method" whereValue="PATCH"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#[{
+                        'id': '12345',
+                        'enabled': false
+                    }]"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+
+        <munit:execution>
+            <flow-ref name="update-collibra-user-status-subflow"/>
+        </munit:execution>
+
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload.enabled]" is="#[MunitTools::equalTo(false)]"/>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test: HTTP Connectivity Error -->
+    <munit:test name="test-http-connectivity-error" description="Test handling of HTTP connectivity errors">
+        <munit:behavior>
+            <!-- Mock HTTP Connectivity Error -->
+            <munit-tools:mock-when doc:name="Mock HTTP Error" processor="http:request">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="config-ref" whereValue="IMS_SCIM_HTTP_Request_Config"/>
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="HTTP:CONNECTIVITY"/>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+
+        <munit:execution>
+            <try>
+                <flow-ref name="get-ims-leaver-users-subflow"/>
+                <error-handler ref="Global_Error_Handler"/>
+            </try>
+        </munit:execution>
+
+        <munit:validation>
+            <munit-tools:assert-that expression="#[payload.errorType]" is="#[MunitTools::equalTo('CONNECTIVITY_ERROR')]"/>
+        </munit:validation>
+    </munit:test>
+
+</mule>

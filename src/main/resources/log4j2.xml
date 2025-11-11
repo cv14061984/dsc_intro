@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration>
+    <Appenders>
+        <RollingFile name="file" fileName="${sys:mule.home}${sys:file.separator}logs${sys:file.separator}ims-collibra-integration.log"
+                     filePattern="${sys:mule.home}${sys:file.separator}logs${sys:file.separator}ims-collibra-integration-%d{MM-dd-yyyy}-%i.log">
+            <PatternLayout pattern="%-5p %d [%t] [%X{correlationId}] %c: %m%n"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy/>
+                <SizeBasedTriggeringPolicy size="10 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10"/>
+        </RollingFile>
+
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="%-5p %d [%t] [%X{correlationId}] %c: %m%n"/>
+        </Console>
+    </Appenders>
+
+    <Loggers>
+        <!-- Application Logger -->
+        <AsyncLogger name="com.shell.ims.collibra" level="${sys:log.level}" additivity="false">
+            <AppenderRef ref="file"/>
+            <AppenderRef ref="Console"/>
+        </AsyncLogger>
+
+        <!-- MuleSoft Loggers -->
+        <AsyncLogger name="org.mule.runtime.core" level="INFO">
+            <AppenderRef ref="file"/>
+        </AsyncLogger>
+
+        <AsyncLogger name="org.mule.service.http" level="WARN">
+            <AppenderRef ref="file"/>
+        </AsyncLogger>
+
+        <!-- Root Logger -->
+        <AsyncRoot level="INFO">
+            <AppenderRef ref="file"/>
+            <AppenderRef ref="Console"/>
+        </AsyncRoot>
+    </Loggers>
+</Configuration>

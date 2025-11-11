@@ -1,0 +1,26 @@
+{
+  "minMuleVersion": "4.7.0",
+  "requiredProduct": "MULE_EE",
+  "classLoaderModelLoaderDescriptor": {
+    "id": "mule",
+    "attributes": {
+      "exportedResources": [
+        "properties/dev.properties",
+        "properties/test.properties",
+        "properties/prod.properties",
+        "log4j2.xml"
+      ],
+      "exportedPackages": [],
+      "includeTestDependencies": false
+    }
+  },
+  "secureProperties": [],
+  "configs": [
+    "ims-collibra-integration.xml",
+    "global-config.xml",
+    "error-handlers.xml"
+  ],
+  "redeploymentEnabled": true,
+  "name": "ims-collibra-integration",
+  "description": "IMS-Collibra User Status Synchronization Integration"
+}

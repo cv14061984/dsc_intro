@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:tls="http://www.mulesoft.org/schema/mule/tls"
+      xmlns:oauth="http://www.mulesoft.org/schema/mule/oauth"
+      xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd
+        http://www.mulesoft.org/schema/mule/oauth http://www.mulesoft.org/schema/mule/oauth/current/mule-oauth.xsd
+        http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd">
+
+    <!-- Configuration Properties -->
+    <configuration-properties file="properties/${mule.env}.properties"/>
+
+    <!-- Global Configurations -->
+    <global-property name="mule.env" value="dev"/>
+
+    <!-- HTTP Request Configuration for IMS SCIM API -->
+    <http:request-config name="IMS_SCIM_HTTP_Request_Config">
+        <http:request-connection
+            host="${ims.scim.host}"
+            port="${ims.scim.port}"
+            protocol="${ims.scim.protocol}">
+            <tls:context>
+                <tls:trust-store insecure="true"/>
+            </tls:context>
+            <http:authentication>
+                <oauth:client-credentials-grant-type
+                    clientId="${ims.oauth.clientId}"
+                    clientSecret="${ims.oauth.clientSecret}"
+                    tokenUrl="${ims.oauth.tokenUrl}"
+                    scopes="${ims.oauth.scopes}">
+                    <oauth:token-request>
+                        <oauth:headers>
+                            <oauth:header key="Content-Type" value="application/x-www-form-urlencoded"/>
+                        </oauth:headers>
+                    </oauth:token-request>
+                </oauth:client-credentials-grant-type>
+            </http:authentication>
+        </http:request-connection>
+        <http:default-headers>
+            <http:header key="Content-Type" value="application/json"/>
+            <http:header key="Accept" value="application/json"/>
+        </http:default-headers>
+    </http:request-config>
+
+    <!-- HTTP Request Configuration for Collibra API -->
+    <http:request-config name="Collibra_HTTP_Request_Config">
+        <http:request-connection
+            host="${collibra.host}"
+            port="${collibra.port}"
+            protocol="${collibra.protocol}">
+            <tls:context>
+                <tls:trust-store insecure="true"/>
+            </tls:context>
+            <http:authentication>
+                <oauth:client-credentials-grant-type
+                    clientId="${collibra.oauth.clientId}"
+                    clientSecret="${collibra.oauth.clientSecret}"
+                    tokenUrl="${collibra.oauth.tokenUrl}"
+                    scopes="${collibra.oauth.scopes}">
+                    <oauth:token-request>
+                        <oauth:headers>
+                            <oauth:header key="Content-Type" value="application/x-www-form-urlencoded"/>
+                        </oauth:headers>
+                    </oauth:token-request>
+                </oauth:client-credentials-grant-type>
+            </http:authentication>
+        </http:request-connection>
+        <http:default-headers>
+            <http:header key="Content-Type" value="application/json"/>
+            <http:header key="Accept" value="application/json"/>
+        </http:default-headers>
+    </http:request-config>
+
+</mule>
