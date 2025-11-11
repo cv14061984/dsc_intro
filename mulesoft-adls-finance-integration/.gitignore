@@ -1,0 +1,84 @@
+# Compiled class files
+*.class
+
+# Log files
+*.log
+
+# Package Files
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# MuleSoft Specific
+target/
+.mule/
+.studio/
+.settings/
+.classpath
+.project
+.factorypath
+mule-project.xml
+
+# Maven
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE - IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# IDE - Eclipse
+.metadata
+bin/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.loadpath
+.recommenders
+
+# IDE - VSCode
+.vscode/
+*.code-workspace
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Secure Properties (DO NOT COMMIT)
+**/secure-properties-*.yaml
+**/credentials*.yaml
+**/secrets*.yaml
+
+# Environment-specific configs (optional - uncomment if needed)
+# **/config-prod.yaml
+# **/config-uat.yaml
+
+# Test Output
+test-output/
+*.test
+
+# Temporary files
+*.temp
+temp/

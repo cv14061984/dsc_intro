@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:validation="http://www.mulesoft.org/schema/mule/validation"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+
+    <!-- System Layer API: sys-magma-grmdm-gf-api -->
+    <!-- This layer provides abstraction over the MDM system -->
+
+    <flow name="sys-magma-grmdm-http-listener-flow" doc:name="System MDM API HTTP Listener Flow">
+        <http:listener doc:name="HTTP Listener"
+                       config-ref="HTTP_Listener_config"
+                       path="/system/mdm/company-file"/>
+
+        <!-- Extract Correlation ID -->
+        <set-variable value="#[attributes.headers['correlation-id'] default uuid()]"
+                     doc:name="Set Correlation ID" variableName="correlationId"/>
+
+        <logger level="INFO" doc:name="Log Request"
+                message="#['[SYSTEM-MDM] Received request | CorrelationId: ' ++ vars.correlationId]"/>
+
+        <!-- Set Retry Variables -->
+        <ee:transform doc:name="Set Retry Variables">
+            <ee:message>
+            </ee:message>
+            <ee:variables>
+                <ee:set-variable variableName="retryCount"><![CDATA[0]]></ee:set-variable>
+                <ee:set-variable variableName="maxRetries"><![CDATA[${mdm.maxRetries}]]></ee:set-variable>
+                <ee:set-variable variableName="retryDelay"><![CDATA[${mdm.retryDelay}]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <!-- Call MDM with Retry Logic -->
+        <flow-ref doc:name="Call MDM with Retry" name="sys-mdm-call-with-retry-subflow"/>
+
+        <logger level="INFO" doc:name="Log Success"
+                message="#['[SYSTEM-MDM] Successfully retrieved data | CorrelationId: ' ++ vars.correlationId ++ ' | Records: ' ++ sizeOf(payload.data default [])]"/>
+
+        <!-- Error Handling -->
+        <error-handler ref="Global_Error_Handler"/>
+    </flow>
+
+    <!-- Sub-flow: Call MDM with Retry Logic -->
+    <sub-flow name="sys-mdm-call-with-retry-subflow" doc:name="Call MDM with Retry Sub-flow">
+        <try doc:name="Try MDM Call">
+            <!-- Call MDM Source API -->
+            <http:request method="GET"
+                          doc:name="GET Company File from MDM"
+                          config-ref="HTTP_Request_MDM"
+                          path="${mdm.basePath}${mdm.scheduler.endpoint}"
+                          responseTimeout="${mdm.timeout}">
+                <http:headers><![CDATA[#[output application/java
+---
+{
+    "correlation-id" : vars.correlationId,
+    "Content-Type" : "application/json",
+    "Accept" : "application/json"
+}]]]></http:headers>
+                <http:query-params><![CDATA[#[output application/java
+---
+{
+    "timestamp" : now() as String,
+    "source" : "mulesoft-integration"
+}]]]></http:query-params>
+            </http:request>
+
+            <logger level="INFO" doc:name="Log MDM Response"
+                    message="#['[SYSTEM-MDM] MDM call successful | CorrelationId: ' ++ vars.correlationId]"/>
+
+            <!-- Transform MDM Response to Standard Format -->
+            <flow-ref doc:name="Transform MDM Response" name="sys-mdm-transform-response-subflow"/>
+
+            <error-handler>
+                <!-- Retry on Connectivity or Timeout Errors -->
+                <on-error-continue type="HTTP:CONNECTIVITY,HTTP:TIMEOUT" enableNotifications="true" logException="true" doc:name="Retry on Error">
+                    <logger level="WARN" doc:name="Log Retry Attempt"
+                            message="#['[SYSTEM-MDM] Error occurred, attempting retry | CorrelationId: ' ++ vars.correlationId ++ ' | Retry: ' ++ vars.retryCount ++ '/' ++ vars.maxRetries]"/>
+
+                    <!-- Increment Retry Count -->
+                    <ee:transform doc:name="Increment Retry Count">
+                        <ee:message>
+                        </ee:message>
+                        <ee:variables>
+                            <ee:set-variable variableName="retryCount"><![CDATA[%dw 2.0
+output application/java
+---
+vars.retryCount + 1]]></ee:set-variable>
+                        </ee:variables>
+                    </ee:transform>
+
+                    <!-- Check if Max Retries Exceeded -->
+                    <choice doc:name="Check Retry Count">
+                        <when expression="#[vars.retryCount &lt; vars.maxRetries]">
+                            <logger level="INFO" doc:name="Log Retry Wait"
+                                    message="#['[SYSTEM-MDM] Waiting before retry | Delay: ' ++ vars.retryDelay ++ 'ms']"/>
+
+                            <!-- Wait before retry -->
+                            <ee:transform doc:name="Wait">
+                                <ee:message>
+                                </ee:message>
+                                <ee:variables>
+                                    <ee:set-variable variableName="waitTime"><![CDATA[%dw 2.0
+output application/java
+---
+wait(vars.retryDelay)]]></ee:set-variable>
+                                </ee:variables>
+                            </ee:transform>
+
+                            <!-- Retry the call -->
+                            <flow-ref doc:name="Retry MDM Call" name="sys-mdm-call-with-retry-subflow"/>
+                        </when>
+                        <otherwise>
+                            <logger level="ERROR" doc:name="Log Max Retries Exceeded"
+                                    message="#['[SYSTEM-MDM] Max retries exceeded | CorrelationId: ' ++ vars.correlationId]"/>
+
+                            <!-- Raise error -->
+                            <raise-error doc:name="Raise Retry Exhausted Error"
+                                       type="HTTP:RETRY_EXHAUSTED"
+                                       description="#['Max retries exceeded after ' ++ vars.retryCount ++ ' attempts']"/>
+                        </otherwise>
+                    </choice>
+                </on-error-continue>
+            </error-handler>
+        </try>
+    </sub-flow>
+
+    <!-- Sub-flow: Transform MDM Response -->
+    <sub-flow name="sys-mdm-transform-response-subflow" doc:name="Transform MDM Response Sub-flow">
+        <ee:transform doc:name="Transform to Standard Format">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "SUCCESS",
+    "correlationId": vars.correlationId,
+    "timestamp": now(),
+    "source": "MDM",
+    "sourceApi": p('mdm.scheduler.endpoint'),
+    "recordCount": sizeOf(payload.companies default payload.data default []),
+    "data": (payload.companies default payload.data default []) map {
+        "companyId": $.id default $.companyId default null,
+        "companyName": $.name default $.companyName default null,
+        "companyCode": $.code default $.companyCode default null,
+        "registrationNumber": $.registrationNumber default $.regNumber default null,
+        "taxIdentifier": $.taxId default $.taxIdentifier default null,
+        "incorporationDate": $.incorporationDate default $.incDate default null,
+        "industry": $.industry default $.sector default null,
+        "country": $.country default $.countryCode default null,
+        "region": $.region default $.regionCode default null,
+        "status": $.status default "ACTIVE",
+        "financialData": {
+            "currency": $.financial.currency default $.currency default null,
+            "fiscalYearEnd": $.financial.fiscalYearEnd default $.fiscalYearEnd default null,
+            "accountingStandard": $.financial.accountingStandard default $.accountingStandard default null
+        },
+        "contactInfo": {
+            "address": $.contact.address default $.address default null,
+            "city": $.contact.city default $.city default null,
+            "postalCode": $.contact.postalCode default $.postalCode default null,
+            "phone": $.contact.phone default $.phone default null,
+            "email": $.contact.email default $.email default null
+        },
+        "metadata": {
+            "createdDate": $.metadata.created default $.createdDate default now(),
+            "modifiedDate": $.metadata.modified default $.modifiedDate default now(),
+            "createdBy": $.metadata.createdBy default $.createdBy default "SYSTEM",
+            "modifiedBy": $.metadata.modifiedBy default $.modifiedBy default "SYSTEM"
+        }
+    }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <logger level="INFO" doc:name="Log Transform Complete"
+                message="#['[SYSTEM-MDM] Response transformed | CorrelationId: ' ++ vars.correlationId ++ ' | Records: ' ++ payload.recordCount]"/>
+    </sub-flow>
+
+</mule>

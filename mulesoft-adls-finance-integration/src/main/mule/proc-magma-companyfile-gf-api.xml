@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:validation="http://www.mulesoft.org/schema/mule/validation"
+      xmlns:aggregators="http://www.mulesoft.org/schema/mule/aggregators"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd
+        http://www.mulesoft.org/schema/mule/aggregators http://www.mulesoft.org/schema/mule/aggregators/current/mule-aggregators.xsd">
+
+    <!-- Process Layer API: proc-magma-companyfile-gf-api -->
+    <!-- This layer handles business logic and orchestration between system APIs -->
+
+    <flow name="proc-magma-companyfile-http-listener-flow" doc:name="Process API HTTP Listener Flow">
+        <http:listener doc:name="HTTP Listener"
+                       config-ref="HTTP_Listener_config"
+                       path="/process/company-file/sync"/>
+
+        <!-- Extract Correlation ID from Header or Payload -->
+        <set-variable value="#[attributes.headers['correlation-id'] default payload.correlationId default uuid()]"
+                     doc:name="Set Correlation ID" variableName="correlationId"/>
+
+        <logger level="INFO" doc:name="Log Request"
+                message="#['[PROCESS] Received sync request | CorrelationId: ' ++ vars.correlationId]"/>
+
+        <!-- Validate Request -->
+        <validation:is-not-null doc:name="Validate Correlation ID" value="#[vars.correlationId]"/>
+
+        <!-- Set Process Metadata -->
+        <ee:transform doc:name="Set Process Metadata">
+            <ee:message>
+            </ee:message>
+            <ee:variables>
+                <ee:set-variable variableName="processStartTime"><![CDATA[%dw 2.0
+output application/java
+---
+now()]]></ee:set-variable>
+                <ee:set-variable variableName="batchSize"><![CDATA[${business.batchSize}]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <!-- Step 1: Fetch Data from MDM via System API -->
+        <logger level="INFO" doc:name="Log Fetch Start"
+                message="#['[PROCESS] Fetching company file data from MDM | CorrelationId: ' ++ vars.correlationId]"/>
+
+        <flow-ref doc:name="Fetch from MDM System API" name="proc-fetch-from-mdm-subflow"/>
+
+        <!-- Save Original Payload -->
+        <set-variable value="#[payload]" doc:name="Save MDM Data" variableName="mdmData"/>
+
+        <!-- Step 2: Transform Data -->
+        <logger level="INFO" doc:name="Log Transform Start"
+                message="#['[PROCESS] Transforming data | CorrelationId: ' ++ vars.correlationId ++ ' | Records: ' ++ sizeOf(payload.data default [])]"/>
+
+        <flow-ref doc:name="Transform Data" name="proc-transform-data-subflow"/>
+
+        <!-- Save Transformed Payload -->
+        <set-variable value="#[payload]" doc:name="Save Transformed Data" variableName="transformedData"/>
+
+        <!-- Step 3: Send Data to ADLS via Destination API -->
+        <logger level="INFO" doc:name="Log ADLS Write Start"
+                message="#['[PROCESS] Writing data to ADLS | CorrelationId: ' ++ vars.correlationId ++ ' | Records: ' ++ sizeOf(payload.records default [])]"/>
+
+        <flow-ref doc:name="Write to ADLS" name="proc-write-to-adls-subflow"/>
+
+        <!-- Build Success Response -->
+        <ee:transform doc:name="Build Success Response">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "SUCCESS",
+    "correlationId": vars.correlationId,
+    "timestamp": now(),
+    "processingTime": ((now() - vars.processStartTime) as Number) ++ "ms",
+    "recordsProcessed": sizeOf(vars.transformedData.records default []),
+    "recordsFetched": sizeOf(vars.mdmData.data default []),
+    "recordsWritten": payload.recordsWritten default sizeOf(vars.transformedData.records default []),
+    "adlsFileName": payload.fileName default null
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <logger level="INFO" doc:name="Log Success"
+                message="#['[PROCESS] Process completed successfully | CorrelationId: ' ++ vars.correlationId ++ ' | Records: ' ++ payload.recordsProcessed]"/>
+
+        <!-- Error Handling -->
+        <error-handler ref="Global_Error_Handler"/>
+    </flow>
+
+    <!-- Sub-flow: Fetch from MDM System API -->
+    <sub-flow name="proc-fetch-from-mdm-subflow" doc:name="Fetch from MDM Sub-flow">
+        <http:request method="GET"
+                      doc:name="Call MDM System API"
+                      config-ref="HTTP_Request_System_API"
+                      path="/system/mdm/company-file">
+            <http:headers><![CDATA[#[output application/java
+---
+{
+    "correlation-id" : vars.correlationId,
+    "Content-Type" : "application/json"
+}]]]></http:headers>
+        </http:request>
+
+        <logger level="INFO" doc:name="Log MDM Response"
+                message="#['[PROCESS] MDM data fetched | CorrelationId: ' ++ vars.correlationId ++ ' | Records: ' ++ sizeOf(payload.data default [])]"/>
+
+        <!-- Validate Response -->
+        <validation:is-not-null doc:name="Validate MDM Response" value="#[payload]"/>
+    </sub-flow>
+
+    <!-- Sub-flow: Transform Data -->
+    <sub-flow name="proc-transform-data-subflow" doc:name="Transform Data Sub-flow">
+        <ee:transform doc:name="Transform MDM to ADLS Format">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "metadata": {
+        "sourceSystem": "MDM",
+        "destinationSystem": "ADLS",
+        "correlationId": vars.correlationId,
+        "processedTimestamp": now(),
+        "recordCount": sizeOf(payload.data default []),
+        "businessCriticality": "Financial",
+        "serviceTier": "Maintenance"
+    },
+    "records": (payload.data default []) map {
+        "companyId": $.companyId default null,
+        "companyName": $.companyName default null,
+        "companyCode": $.companyCode default null,
+        "registrationNumber": $.registrationNumber default null,
+        "taxIdentifier": $.taxIdentifier default null,
+        "incorporationDate": $.incorporationDate default null,
+        "industry": $.industry default null,
+        "country": $.country default null,
+        "region": $.region default null,
+        "status": $.status default "ACTIVE",
+        "financialData": {
+            "currency": $.financialData.currency default null,
+            "fiscalYearEnd": $.financialData.fiscalYearEnd default null,
+            "accountingStandard": $.financialData.accountingStandard default null
+        },
+        "contactInfo": {
+            "address": $.contactInfo.address default null,
+            "city": $.contactInfo.city default null,
+            "postalCode": $.contactInfo.postalCode default null,
+            "phone": $.contactInfo.phone default null,
+            "email": $.contactInfo.email default null
+        },
+        "metadata": {
+            "createdDate": $.metadata.createdDate default now(),
+            "modifiedDate": $.metadata.modifiedDate default now(),
+            "createdBy": $.metadata.createdBy default "SYSTEM",
+            "modifiedBy": $.metadata.modifiedBy default "SYSTEM"
+        },
+        "auditInfo": {
+            "syncTimestamp": now(),
+            "correlationId": vars.correlationId,
+            "sourceSystem": "MDM",
+            "processedBy": p('api.process.name')
+        }
+    }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <logger level="INFO" doc:name="Log Transform Complete"
+                message="#['[PROCESS] Data transformation completed | CorrelationId: ' ++ vars.correlationId ++ ' | Transformed Records: ' ++ sizeOf(payload.records default [])]"/>
+    </sub-flow>
+
+    <!-- Sub-flow: Write to ADLS -->
+    <sub-flow name="proc-write-to-adls-subflow" doc:name="Write to ADLS Sub-flow">
+        <!-- Prepare ADLS Request -->
+        <ee:transform doc:name="Prepare ADLS Request">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "correlationId": vars.correlationId,
+    "fileName": p('adls.fileNamePattern') replace "{timestamp}" with (now() as String {format: "yyyyMMdd_HHmmss"}),
+    "containerName": p('adls.containerName'),
+    "directory": p('adls.directory'),
+    "data": payload
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <http:request method="POST"
+                      doc:name="Call ADLS Destination API"
+                      config-ref="HTTP_Request_System_API"
+                      path="/system/adls/write">
+            <http:headers><![CDATA[#[output application/java
+---
+{
+    "correlation-id" : vars.correlationId,
+    "Content-Type" : "application/json"
+}]]]></http:headers>
+        </http:request>
+
+        <logger level="INFO" doc:name="Log ADLS Write Complete"
+                message="#['[PROCESS] Data written to ADLS | CorrelationId: ' ++ vars.correlationId ++ ' | Response: ' ++ payload]"/>
+    </sub-flow>
+
+</mule>

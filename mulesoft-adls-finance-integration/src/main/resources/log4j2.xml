@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration>
+    <Appenders>
+        <RollingFile name="file" fileName="${sys:mule.home}${sys:file.separator}logs${sys:file.separator}mulesoft-adls-finance-integration.log"
+                     filePattern="${sys:mule.home}${sys:file.separator}logs${sys:file.separator}mulesoft-adls-finance-integration-%d{MM-dd-yyyy}-%i.log">
+            <PatternLayout pattern="%-5p %d [%t] [%X{correlationId}] %c: %m%n"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy/>
+                <SizeBasedTriggeringPolicy size="10 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="10"/>
+        </RollingFile>
+
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="%-5p %d [%t] [%X{correlationId}] %c: %m%n"/>
+        </Console>
+    </Appenders>
+
+    <Loggers>
+        <!-- Application Loggers -->
+        <AsyncLogger name="com.gf.finance" level="INFO" additivity="false">
+            <AppenderRef ref="file"/>
+            <AppenderRef ref="Console"/>
+        </AsyncLogger>
+
+        <!-- CXF is used for SOAP -->
+        <AsyncLogger name="org.apache.cxf" level="WARN" additivity="false">
+            <AppenderRef ref="file"/>
+        </AsyncLogger>
+
+        <!-- Apache Commons tend to make a lot of noise which can clutter the log -->
+        <AsyncLogger name="org.apache" level="WARN" additivity="false">
+            <AppenderRef ref="file"/>
+        </AsyncLogger>
+
+        <!-- Reduce startup noise -->
+        <AsyncLogger name="org.springframework.beans.factory" level="WARN" additivity="false">
+            <AppenderRef ref="file"/>
+        </AsyncLogger>
+
+        <!-- Mule Classes -->
+        <AsyncLogger name="org.mule" level="INFO" additivity="false">
+            <AppenderRef ref="file"/>
+        </AsyncLogger>
+        <AsyncLogger name="com.mulesoft" level="INFO" additivity="false">
+            <AppenderRef ref="file"/>
+        </AsyncLogger>
+
+        <Root level="INFO">
+            <AppenderRef ref="file"/>
+            <AppenderRef ref="Console"/>
+        </Root>
+    </Loggers>
+</Configuration>

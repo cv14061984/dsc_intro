@@ -1,0 +1,73 @@
+# Production Environment Configuration
+# MDM to ADLS Finance Integration
+
+# HTTP Listener Configuration
+http:
+  listener:
+    host: "0.0.0.0"
+    port: "8081"
+    basePath: "/api"
+
+# Scheduler Configuration
+scheduler:
+  cron: "0 30 1/12 1/1 * ? *"  # Daily twice at 7 AM IST (1:30 AM UTC, then 12 hours later)
+  timezone: "Asia/Kolkata"
+  enabled: true
+
+# MDM Source System Configuration
+mdm:
+  host: "mdm-api.gf.com"
+  port: "443"
+  protocol: "HTTPS"
+  basePath: "/api/v1"
+  scheduler:
+    endpoint: "/exp-magma-scheduler-api/companyfile"
+  timeout: 30000
+  maxRetries: 3
+  retryDelay: 5000
+
+# Azure Data Lake Storage Configuration
+adls:
+  accountName: "gffinanceprodadls"
+  accountKey: "![p('adls.account.key')]"
+  containerName: "finance-records"
+  directory: "company-files"
+  fileNamePattern: "companyfile_{timestamp}.json"
+
+# API Configuration
+api:
+  experience:
+    name: "exp-simp-companyfile-gf-api"
+    version: "v1"
+    port: "8081"
+  process:
+    name: "proc-magma-companyfile-gf-api"
+    host: "process-api.gf.com"
+    port: "443"
+  system:
+    name: "sys-magma-grmdm-gf-api"
+    host: "system-api.gf.com"
+    port: "443"
+  destination:
+    name: "sys-adls-financerecords-gf-app"
+    host: "adls-api.gf.com"
+    port: "443"
+
+# Logging Configuration
+logging:
+  level: "WARN"
+  enableDetailedLogs: false
+  correlationIdEnabled: true
+
+# Error Handling
+error:
+  maxRetries: 3
+  retryInterval: 5000
+  notificationEmail: "finance-ops@gf.com"
+
+# Business Configuration
+business:
+  criticality: "Financial"
+  serviceTier: "Maintenance"
+  batchSize: 100
+  processingMode: "BATCH"

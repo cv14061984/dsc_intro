@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:validation="http://www.mulesoft.org/schema/mule/validation"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+
+    <!-- Experience Layer API: exp-simp-companyfile-gf-api -->
+    <!-- This layer provides scheduler-triggered integration orchestration -->
+
+    <!-- Scheduler Flow - Triggers Daily at 7 AM IST (twice) -->
+    <flow name="scheduler-trigger-flow" doc:name="Scheduler Trigger Flow">
+        <scheduler doc:name="Daily Scheduler">
+            <scheduling-strategy>
+                <cron expression="${scheduler.cron}" timeZone="${scheduler.timezone}"/>
+            </scheduling-strategy>
+        </scheduler>
+
+        <!-- Generate Correlation ID -->
+        <set-variable value="#[uuid()]" doc:name="Set Correlation ID" variableName="correlationId"/>
+
+        <logger level="INFO" doc:name="Log Start"
+                message="#['[SCHEDULER] Starting company file sync | CorrelationId: ' ++ vars.correlationId ++ ' | Timestamp: ' ++ now()]"/>
+
+        <!-- Set Metadata -->
+        <ee:transform doc:name="Set Metadata">
+            <ee:message>
+            </ee:message>
+            <ee:variables>
+                <ee:set-variable variableName="startTime"><![CDATA[%dw 2.0
+output application/java
+---
+now()]]></ee:set-variable>
+                <ee:set-variable variableName="businessCriticality"><![CDATA[${business.criticality}]]></ee:set-variable>
+                <ee:set-variable variableName="serviceTier"><![CDATA[${business.serviceTier}]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <!-- Call Process API -->
+        <flow-ref doc:name="Call Process API" name="exp-process-company-file-subflow"/>
+
+        <!-- Log Success -->
+        <logger level="INFO" doc:name="Log Success"
+                message="#['[SCHEDULER] Company file sync completed successfully | CorrelationId: ' ++ vars.correlationId ++ ' | Duration: ' ++ ((now() - vars.startTime) as Number) ++ 'ms']"/>
+
+        <!-- Error Handling -->
+        <error-handler ref="Global_Error_Handler">
+            <on-error-continue type="ANY" enableNotifications="true" logException="true" doc:name="On Error Continue">
+                <logger level="ERROR" doc:name="Log Failure"
+                        message="#['[SCHEDULER] Company file sync failed | CorrelationId: ' ++ vars.correlationId ++ ' | Error: ' ++ error.description]"/>
+
+                <!-- Send notification (implement based on requirements) -->
+                <ee:transform doc:name="Build Error Notification">
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "notificationType": "ERROR",
+    "serviceName": p('api.experience.name'),
+    "correlationId": vars.correlationId,
+    "timestamp": now(),
+    "error": {
+        "description": error.description,
+        "detailedDescription": error.detailedDescription,
+        "type": error.errorType.asString
+    },
+    "businessCriticality": vars.businessCriticality,
+    "serviceTier": vars.serviceTier,
+    "notificationEmail": p('error.notificationEmail')
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+
+                <logger level="ERROR" doc:name="Log Error Notification" message="#[payload]"/>
+            </on-error-continue>
+        </error-handler>
+    </flow>
+
+    <!-- HTTP Listener Flow - Manual Trigger -->
+    <flow name="exp-simp-companyfile-http-listener-flow" doc:name="HTTP Listener Flow">
+        <http:listener doc:name="HTTP Listener"
+                       config-ref="HTTP_Listener_config"
+                       path="/experience/company-file/sync"/>
+
+        <!-- Generate Correlation ID -->
+        <set-variable value="#[uuid()]" doc:name="Set Correlation ID" variableName="correlationId"/>
+
+        <logger level="INFO" doc:name="Log Request"
+                message="#['[HTTP] Manual sync triggered | CorrelationId: ' ++ vars.correlationId]"/>
+
+        <!-- Set Metadata -->
+        <ee:transform doc:name="Set Metadata">
+            <ee:message>
+            </ee:message>
+            <ee:variables>
+                <ee:set-variable variableName="startTime"><![CDATA[%dw 2.0
+output application/java
+---
+now()]]></ee:set-variable>
+                <ee:set-variable variableName="businessCriticality"><![CDATA[${business.criticality}]]></ee:set-variable>
+                <ee:set-variable variableName="serviceTier"><![CDATA[${business.serviceTier}]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <!-- Call Process API -->
+        <flow-ref doc:name="Call Process API" name="exp-process-company-file-subflow"/>
+
+        <!-- Build Success Response -->
+        <ee:transform doc:name="Build Success Response">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "SUCCESS",
+    "message": "Company file sync completed successfully",
+    "correlationId": vars.correlationId,
+    "timestamp": now(),
+    "processingTime": ((now() - vars.startTime) as Number) ++ "ms",
+    "recordsProcessed": payload.recordsProcessed default 0
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <!-- Error Handling -->
+        <error-handler ref="Global_Error_Handler"/>
+    </flow>
+
+    <!-- Sub-flow: Process Company File -->
+    <sub-flow name="exp-process-company-file-subflow" doc:name="Process Company File Sub-flow">
+        <logger level="INFO" doc:name="Log Process Start"
+                message="#['[EXPERIENCE] Calling Process API | CorrelationId: ' ++ vars.correlationId]"/>
+
+        <!-- Call Process API -->
+        <http:request method="POST"
+                      doc:name="Call Process API"
+                      config-ref="HTTP_Request_Process_API"
+                      path="/process/company-file/sync">
+            <http:headers><![CDATA[#[output application/java
+---
+{
+    "correlation-id" : vars.correlationId,
+    "Content-Type" : "application/json"
+}]]]></http:headers>
+            <http:body><![CDATA[#[output application/json
+---
+{
+    "correlationId": vars.correlationId,
+    "timestamp": now(),
+    "businessCriticality": vars.businessCriticality
+}]]]></http:body>
+        </http:request>
+
+        <logger level="INFO" doc:name="Log Process Complete"
+                message="#['[EXPERIENCE] Process API call completed | CorrelationId: ' ++ vars.correlationId ++ ' | Response: ' ++ payload]"/>
+    </sub-flow>
+
+</mule>

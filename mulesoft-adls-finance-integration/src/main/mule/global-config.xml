@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties"
+      xmlns:azure-storage="http://www.mulesoft.org/schema/mule/azure-storage"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd
+        http://www.mulesoft.org/schema/mule/azure-storage http://www.mulesoft.org/schema/mule/azure-storage/current/mule-azure-storage.xsd">
+
+    <!-- Global Configuration Properties -->
+    <configuration-properties file="config-${env}.yaml" doc:name="Configuration Properties"/>
+
+    <!-- Secure Properties Configuration -->
+    <secure-properties:config name="Secure_Properties_Config"
+                              file="secure-properties-${env}.yaml"
+                              key="${encryption.key}"
+                              doc:name="Secure Properties Config">
+        <secure-properties:encrypt algorithm="Blowfish"/>
+    </secure-properties:config>
+
+    <!-- HTTP Listener Configuration -->
+    <http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config">
+        <http:listener-connection host="${http.listener.host}" port="${http.listener.port}"/>
+    </http:listener-config>
+
+    <!-- HTTP Request Configuration - MDM Source -->
+    <http:request-config name="HTTP_Request_MDM" doc:name="HTTP Request MDM">
+        <http:request-connection
+            protocol="${mdm.protocol}"
+            host="${mdm.host}"
+            port="${mdm.port}"
+            connectionIdleTimeout="${mdm.timeout}"
+            responseBufferSize="1024">
+            <http:client-socket-properties>
+                <tcp:client-socket-properties connectionTimeout="${mdm.timeout}" sendTcpNoDelay="true"/>
+            </http:client-socket-properties>
+        </http:request-connection>
+    </http:request-config>
+
+    <!-- HTTP Request Configuration - Process API -->
+    <http:request-config name="HTTP_Request_Process_API" doc:name="HTTP Request Process API">
+        <http:request-connection
+            protocol="HTTPS"
+            host="${api.process.host}"
+            port="${api.process.port}"/>
+    </http:request-config>
+
+    <!-- HTTP Request Configuration - System API -->
+    <http:request-config name="HTTP_Request_System_API" doc:name="HTTP Request System API">
+        <http:request-connection
+            protocol="HTTPS"
+            host="${api.system.host}"
+            port="${api.system.port}"/>
+    </http:request-config>
+
+    <!-- Azure Storage Configuration -->
+    <azure-storage:config name="Azure_Storage_Config" doc:name="Azure Storage Config">
+        <azure-storage:connection
+            accountName="${adls.accountName}"
+            accessKey="${secure::adls.account.key}"/>
+    </azure-storage:config>
+
+    <!-- Global Variables -->
+    <global-property name="env" value="dev"/>
+
+</mule>

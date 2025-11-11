@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:azure-storage="http://www.mulesoft.org/schema/mule/azure-storage"
+      xmlns:validation="http://www.mulesoft.org/schema/mule/validation"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/azure-storage http://www.mulesoft.org/schema/mule/azure-storage/current/mule-azure-storage.xsd
+        http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+
+    <!-- System Layer API: sys-adls-financerecords-gf-app -->
+    <!-- This layer provides abstraction over Azure Data Lake Storage -->
+
+    <flow name="sys-adls-financerecords-http-listener-flow" doc:name="System ADLS API HTTP Listener Flow">
+        <http:listener doc:name="HTTP Listener"
+                       config-ref="HTTP_Listener_config"
+                       path="/system/adls/write"/>
+
+        <!-- Extract Correlation ID -->
+        <set-variable value="#[attributes.headers['correlation-id'] default payload.correlationId default uuid()]"
+                     doc:name="Set Correlation ID" variableName="correlationId"/>
+
+        <logger level="INFO" doc:name="Log Request"
+                message="#['[SYSTEM-ADLS] Received write request | CorrelationId: ' ++ vars.correlationId]"/>
+
+        <!-- Validate Request -->
+        <validation:is-not-null doc:name="Validate Payload" value="#[payload]"/>
+        <validation:is-not-null doc:name="Validate Data" value="#[payload.data]"/>
+        <validation:is-not-null doc:name="Validate File Name" value="#[payload.fileName]"/>
+
+        <!-- Extract Request Parameters -->
+        <ee:transform doc:name="Extract Parameters">
+            <ee:message>
+            </ee:message>
+            <ee:variables>
+                <ee:set-variable variableName="fileName"><![CDATA[%dw 2.0
+output application/java
+---
+payload.fileName]]></ee:set-variable>
+                <ee:set-variable variableName="containerName"><![CDATA[%dw 2.0
+output application/java
+---
+payload.containerName default p('adls.containerName')]]></ee:set-variable>
+                <ee:set-variable variableName="directory"><![CDATA[%dw 2.0
+output application/java
+---
+payload.directory default p('adls.directory')]]></ee:set-variable>
+                <ee:set-variable variableName="dataToWrite"><![CDATA[%dw 2.0
+output application/json
+---
+payload.data]]></ee:set-variable>
+                <ee:set-variable variableName="fullPath"><![CDATA[%dw 2.0
+output application/java
+---
+(payload.directory default p('adls.directory')) ++ "/" ++ payload.fileName]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <logger level="INFO" doc:name="Log Write Details"
+                message="#['[SYSTEM-ADLS] Writing to ADLS | CorrelationId: ' ++ vars.correlationId ++ ' | Container: ' ++ vars.containerName ++ ' | File: ' ++ vars.fullPath]"/>
+
+        <!-- Write to ADLS -->
+        <flow-ref doc:name="Write to ADLS Blob" name="sys-adls-write-blob-subflow"/>
+
+        <!-- Build Success Response -->
+        <ee:transform doc:name="Build Success Response">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "SUCCESS",
+    "correlationId": vars.correlationId,
+    "timestamp": now(),
+    "fileName": vars.fileName,
+    "fullPath": vars.fullPath,
+    "containerName": vars.containerName,
+    "recordsWritten": sizeOf(vars.dataToWrite.records default []),
+    "fileSizeBytes": sizeOf(write(vars.dataToWrite, 'application/json')),
+    "message": "Data successfully written to Azure Data Lake Storage"
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <logger level="INFO" doc:name="Log Success"
+                message="#['[SYSTEM-ADLS] Successfully written to ADLS | CorrelationId: ' ++ vars.correlationId ++ ' | File: ' ++ vars.fullPath ++ ' | Records: ' ++ payload.recordsWritten]"/>
+
+        <!-- Error Handling -->
+        <error-handler ref="Global_Error_Handler"/>
+    </flow>
+
+    <!-- Sub-flow: Write to ADLS Blob -->
+    <sub-flow name="sys-adls-write-blob-subflow" doc:name="Write to ADLS Blob Sub-flow">
+        <try doc:name="Try ADLS Write">
+            <!-- Prepare Data for Writing -->
+            <ee:transform doc:name="Prepare Data">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+vars.dataToWrite]]></ee:set-payload>
+                </ee:message>
+            </ee:transform>
+
+            <!-- Write to Azure Blob Storage -->
+            <azure-storage:create-blob
+                doc:name="Create Blob in ADLS"
+                config-ref="Azure_Storage_Config"
+                containerName="#[vars.containerName]"
+                blobName="#[vars.fullPath]">
+                <azure-storage:content><![CDATA[#[payload]]]></azure-storage:content>
+            </azure-storage:create-blob>
+
+            <logger level="INFO" doc:name="Log ADLS Write Success"
+                    message="#['[SYSTEM-ADLS] Blob created successfully | CorrelationId: ' ++ vars.correlationId ++ ' | Blob: ' ++ vars.fullPath]"/>
+
+            <error-handler>
+                <!-- Handle ADLS Errors with Retry -->
+                <on-error-continue type="AZURE-STORAGE:CONNECTIVITY,AZURE-STORAGE:RETRY_EXHAUSTED" enableNotifications="true" logException="true" doc:name="Retry on ADLS Error">
+                    <logger level="ERROR" doc:name="Log ADLS Error"
+                            message="#['[SYSTEM-ADLS] Error writing to ADLS | CorrelationId: ' ++ vars.correlationId ++ ' | Error: ' ++ error.description]"/>
+
+                    <!-- Attempt Alternative Write Method (if blob exists, update it) -->
+                    <try doc:name="Try Update Blob">
+                        <azure-storage:update-blob
+                            doc:name="Update Blob in ADLS"
+                            config-ref="Azure_Storage_Config"
+                            containerName="#[vars.containerName]"
+                            blobName="#[vars.fullPath]">
+                            <azure-storage:content><![CDATA[#[vars.dataToWrite]]]></azure-storage:content>
+                        </azure-storage:update-blob>
+
+                        <logger level="INFO" doc:name="Log Update Success"
+                                message="#['[SYSTEM-ADLS] Blob updated successfully | CorrelationId: ' ++ vars.correlationId]"/>
+
+                        <error-handler>
+                            <on-error-propagate type="ANY" enableNotifications="true" logException="true" doc:name="Propagate Update Error">
+                                <logger level="ERROR" doc:name="Log Update Error"
+                                        message="#['[SYSTEM-ADLS] Failed to update blob | CorrelationId: ' ++ vars.correlationId]"/>
+                                <raise-error doc:name="Raise ADLS Write Error"
+                                           type="AZURE-STORAGE:WRITE_ERROR"
+                                           description="#['Failed to write or update blob in ADLS: ' ++ error.description]"/>
+                            </on-error-propagate>
+                        </error-handler>
+                    </try>
+                </on-error-continue>
+            </error-handler>
+        </try>
+    </sub-flow>
+
+    <!-- Health Check Flow -->
+    <flow name="sys-adls-health-check-flow" doc:name="Health Check Flow">
+        <http:listener doc:name="HTTP Listener"
+                       config-ref="HTTP_Listener_config"
+                       path="/system/adls/health"/>
+
+        <logger level="INFO" doc:name="Log Health Check" message="#['[SYSTEM-ADLS] Health check requested']"/>
+
+        <ee:transform doc:name="Build Health Response">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "status": "UP",
+    "service": p('api.destination.name'),
+    "timestamp": now(),
+    "adls": {
+        "accountName": p('adls.accountName'),
+        "containerName": p('adls.containerName'),
+        "connected": true
+    }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+
+</mule>

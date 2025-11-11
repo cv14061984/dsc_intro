@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <!-- Global Error Handler -->
+    <error-handler name="Global_Error_Handler" doc:name="Global Error Handler">
+
+        <!-- HTTP Connectivity Errors -->
+        <on-error-propagate type="HTTP:CONNECTIVITY" enableNotifications="true" logException="true" doc:name="HTTP Connectivity Error">
+            <logger level="ERROR" doc:name="Log Error"
+                    message="#['HTTP Connectivity Error: ' ++ error.description ++ ' | CorrelationId: ' ++ correlationId]"/>
+            <ee:transform doc:name="Build Error Response">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "error": {
+        "code": "HTTP_CONNECTIVITY_ERROR",
+        "message": "Unable to connect to the remote system",
+        "timestamp": now(),
+        "correlationId": correlationId,
+        "details": error.description
+    }
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus"><![CDATA[503]]></ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+        </on-error-propagate>
+
+        <!-- HTTP Timeout Errors -->
+        <on-error-propagate type="HTTP:TIMEOUT" enableNotifications="true" logException="true" doc:name="HTTP Timeout Error">
+            <logger level="ERROR" doc:name="Log Error"
+                    message="#['HTTP Timeout Error: ' ++ error.description ++ ' | CorrelationId: ' ++ correlationId]"/>
+            <ee:transform doc:name="Build Error Response">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "error": {
+        "code": "HTTP_TIMEOUT_ERROR",
+        "message": "Request timeout while connecting to remote system",
+        "timestamp": now(),
+        "correlationId": correlationId,
+        "details": error.description
+    }
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus"><![CDATA[504]]></ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+        </on-error-propagate>
+
+        <!-- Validation Errors -->
+        <on-error-propagate type="VALIDATION:INVALID_BOOLEAN,VALIDATION:INVALID_NUMBER,VALIDATION:INVALID_SIZE,VALIDATION:INVALID_TIME,VALIDATION:INVALID_URL"
+                           enableNotifications="true" logException="true" doc:name="Validation Error">
+            <logger level="WARN" doc:name="Log Error"
+                    message="#['Validation Error: ' ++ error.description ++ ' | CorrelationId: ' ++ correlationId]"/>
+            <ee:transform doc:name="Build Error Response">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "error": {
+        "code": "VALIDATION_ERROR",
+        "message": "Invalid data provided",
+        "timestamp": now(),
+        "correlationId": correlationId,
+        "details": error.description
+    }
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus"><![CDATA[400]]></ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+        </on-error-propagate>
+
+        <!-- Transform Message Errors -->
+        <on-error-propagate type="MULE:EXPRESSION,MULE:TRANSFORMATION" enableNotifications="true" logException="true" doc:name="Transformation Error">
+            <logger level="ERROR" doc:name="Log Error"
+                    message="#['Transformation Error: ' ++ error.description ++ ' | CorrelationId: ' ++ correlationId]"/>
+            <ee:transform doc:name="Build Error Response">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "error": {
+        "code": "TRANSFORMATION_ERROR",
+        "message": "Error transforming data",
+        "timestamp": now(),
+        "correlationId": correlationId,
+        "details": error.description
+    }
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+        </on-error-propagate>
+
+        <!-- Azure Storage Errors -->
+        <on-error-propagate type="AZURE-STORAGE:CONNECTIVITY,AZURE-STORAGE:RETRY_EXHAUSTED"
+                           enableNotifications="true" logException="true" doc:name="Azure Storage Error">
+            <logger level="ERROR" doc:name="Log Error"
+                    message="#['Azure Storage Error: ' ++ error.description ++ ' | CorrelationId: ' ++ correlationId]"/>
+            <ee:transform doc:name="Build Error Response">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "error": {
+        "code": "AZURE_STORAGE_ERROR",
+        "message": "Error writing to Azure Data Lake Storage",
+        "timestamp": now(),
+        "correlationId": correlationId,
+        "details": error.description
+    }
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+        </on-error-propagate>
+
+        <!-- Generic Error Handler -->
+        <on-error-propagate type="ANY" enableNotifications="true" logException="true" doc:name="Generic Error">
+            <logger level="ERROR" doc:name="Log Error"
+                    message="#['Unexpected Error: ' ++ error.description ++ ' | CorrelationId: ' ++ correlationId]"/>
+            <ee:transform doc:name="Build Error Response">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "error": {
+        "code": "INTERNAL_ERROR",
+        "message": "An unexpected error occurred",
+        "timestamp": now(),
+        "correlationId": correlationId,
+        "details": error.description
+    }
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus"><![CDATA[500]]></ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+        </on-error-propagate>
+    </error-handler>
+
+</mule>
