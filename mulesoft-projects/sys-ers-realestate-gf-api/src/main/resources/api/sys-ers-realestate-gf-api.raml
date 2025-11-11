@@ -1,0 +1,206 @@
+#%RAML 1.0
+title: ERS Real Estate System API
+version: v1
+baseUri: https://api.organization.com/sys/ers/realestate/{version}
+mediaType: [application/json]
+
+documentation:
+  - title: Overview
+    content: |
+      System API for ERS (SAP HANA DB) Real Estate Data Operations
+      Provides CRUD operations for real estate properties in the ERS system.
+
+traits:
+  client-id-required:
+    headers:
+      client_id:
+        type: string
+        required: true
+      client_secret:
+        type: string
+        required: true
+  correlation-id:
+    headers:
+      x-correlation-id:
+        type: string
+        required: false
+
+types:
+  ERSProperty:
+    type: object
+    properties:
+      propertyId: string
+      propertyType: string
+      street: string
+      city: string
+      state: string
+      postalCode: string
+      country: string
+      currentValue: number
+      currency: string
+      valuationDate: datetime
+      ownerId: string
+      ownerName: string
+      status: string
+      sourceSystem: string
+      lastModifiedDate: datetime
+
+  CreatePropertyRequest:
+    type: object
+    properties:
+      propertyId: string
+      propertyType: string
+      address:
+        type: object
+        properties:
+          street: string
+          city: string
+          state: string
+          postalCode: string
+          country: string
+      valuation:
+        type: object
+        properties:
+          currentValue: number
+          currency: string
+          valuationDate: datetime
+      ownership:
+        type: object
+        properties:
+          ownerId: string
+          ownerName: string
+      status: string
+      sourceSystem: string
+
+  SuccessResponse:
+    type: object
+    properties:
+      success: boolean
+      message: string
+      propertyId: string
+      timestamp: datetime
+
+  Error:
+    type: object
+    properties:
+      code: string
+      message: string
+      correlationId?: string
+      timestamp: datetime
+
+/properties:
+  post:
+    description: Create or update a property in ERS (SAP HANA DB)
+    is: [client-id-required, correlation-id]
+    body:
+      application/json:
+        type: CreatePropertyRequest
+        example: |
+          {
+            "propertyId": "PROP-001234",
+            "propertyType": "COMMERCIAL",
+            "address": {
+              "street": "123 Main Street",
+              "city": "New York",
+              "state": "NY",
+              "postalCode": "10001",
+              "country": "USA"
+            },
+            "valuation": {
+              "currentValue": 5000000.00,
+              "currency": "USD",
+              "valuationDate": "2024-01-15T10:00:00Z"
+            },
+            "ownership": {
+              "ownerId": "OWN-5678",
+              "ownerName": "ABC Corporation"
+            },
+            "status": "ACTIVE",
+            "sourceSystem": "MDM"
+          }
+    responses:
+      201:
+        body:
+          application/json:
+            type: SuccessResponse
+            example: |
+              {
+                "success": true,
+                "message": "Property created successfully in ERS",
+                "propertyId": "PROP-001234",
+                "timestamp": "2024-01-15T10:00:00Z"
+              }
+      400:
+        body:
+          application/json:
+            type: Error
+      500:
+        body:
+          application/json:
+            type: Error
+
+  get:
+    description: Retrieve properties from ERS
+    is: [client-id-required, correlation-id]
+    queryParameters:
+      status:
+        type: string
+        required: false
+      limit:
+        type: integer
+        required: false
+        default: 100
+    responses:
+      200:
+        body:
+          application/json:
+            type: ERSProperty[]
+
+  /{propertyId}:
+    get:
+      description: Get a specific property from ERS
+      is: [client-id-required, correlation-id]
+      responses:
+        200:
+          body:
+            application/json:
+              type: ERSProperty
+        404:
+          body:
+            application/json:
+              type: Error
+
+    put:
+      description: Update a property in ERS
+      is: [client-id-required, correlation-id]
+      body:
+        application/json:
+          type: CreatePropertyRequest
+      responses:
+        200:
+          body:
+            application/json:
+              type: SuccessResponse
+
+    delete:
+      description: Delete a property from ERS
+      is: [client-id-required, correlation-id]
+      responses:
+        200:
+          body:
+            application/json:
+              type: SuccessResponse
+
+/health:
+  get:
+    description: Health check endpoint
+    responses:
+      200:
+        body:
+          application/json:
+            example: |
+              {
+                "status": "UP",
+                "timestamp": "2024-01-15T10:00:00Z",
+                "database": "CONNECTED"
+              }

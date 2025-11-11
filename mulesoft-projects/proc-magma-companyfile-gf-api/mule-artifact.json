@@ -1,0 +1,19 @@
+{
+  "minMuleVersion": "4.6.0",
+  "secureProperties": [
+    "api.client.secret",
+    "encryption.key"
+  ],
+  "redeploymentEnabled": true,
+  "name": "proc-magma-companyfile-gf-api",
+  "classLoaderModelLoaderDescriptor": {
+    "id": "mule",
+    "attributes": {
+      "exportedResources": []
+    }
+  },
+  "bundleDescriptorLoader": {
+    "id": "mule",
+    "attributes": {}
+  }
+}

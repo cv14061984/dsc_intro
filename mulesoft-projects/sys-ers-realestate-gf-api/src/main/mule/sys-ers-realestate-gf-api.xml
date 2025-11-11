@@ -1,0 +1,321 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:db="http://www.mulesoft.org/schema/mule/db"
+      xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+      xmlns:validation="http://www.mulesoft.org/schema/mule/validation"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+        http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd
+        http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+
+    <!-- Configuration Properties -->
+    <configuration-properties file="properties/${env}.properties" />
+
+    <!-- HTTP Listener Configuration -->
+    <http:listener-config name="HTTP_Listener_config">
+        <http:listener-connection host="${http.host}" port="${http.port}" />
+    </http:listener-config>
+
+    <!-- SAP HANA Database Configuration -->
+    <db:config name="ERS_HANA_Database_Config">
+        <db:generic-connection
+            url="jdbc:sap://${ers.db.host}:${ers.db.port}/?databaseName=${ers.db.name}"
+            driverClassName="com.sap.db.jdbc.Driver"
+            user="${ers.db.user}"
+            password="${ers.db.password}">
+            <db:pooling-profile
+                maxPoolSize="${ers.db.pool.max.size}"
+                minPoolSize="${ers.db.pool.min.size}" />
+        </db:generic-connection>
+    </db:config>
+
+    <!-- APIKit Configuration -->
+    <apikit:config name="sys-ers-realestate-gf-api-config"
+                   api="api/sys-ers-realestate-gf-api.raml"
+                   outboundHeadersMapName="outboundHeaders"
+                   httpStatusVarName="httpStatus" />
+
+    <!-- Main API Listener Flow -->
+    <flow name="sys-ers-realestate-main">
+        <http:listener config-ref="HTTP_Listener_config"
+                      path="${http.base.path}/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+
+        <!-- Set Correlation ID -->
+        <set-variable variableName="correlationId"
+                     value="#[attributes.headers['x-correlation-id'] default uuid()]" />
+
+        <!-- Log Request -->
+        <logger level="INFO"
+                message='#["ERS API Request - CorrelationId: $(vars.correlationId), Path: $(attributes.requestPath), Method: $(attributes.method)"]' />
+
+        <!-- Route to APIKit -->
+        <apikit:router config-ref="sys-ers-realestate-gf-api-config" />
+    </flow>
+
+    <!-- POST /properties - Create or Update Property in ERS -->
+    <flow name="post:\properties:application\json:sys-ers-realestate-gf-api-config">
+        <logger level="INFO"
+                message='#["Creating/Updating property in ERS - PropertyId: $(payload.propertyId), CorrelationId: $(vars.correlationId)"]' />
+
+        <!-- Validate Input -->
+        <validation:is-not-null value="#[payload.propertyId]" message="Property ID is required" />
+        <validation:is-not-null value="#[payload.propertyType]" message="Property Type is required" />
+
+        <!-- Check if Property Exists (Upsert Logic) -->
+        <db:select config-ref="ERS_HANA_Database_Config">
+            <db:sql><![CDATA[SELECT COUNT(*) as count FROM ${ers.schema}.REAL_ESTATE_PROPERTIES
+                           WHERE PROPERTY_ID = :propertyId]]></db:sql>
+            <db:input-parameters><![CDATA[#[{propertyId: payload.propertyId}]]]></db:input-parameters>
+        </db:select>
+
+        <set-variable variableName="propertyExists" value="#[payload[0].count > 0]" />
+        <set-payload value="#[attributes.requestPayload]" />
+
+        <choice>
+            <when expression="#[vars.propertyExists]">
+                <!-- Update Existing Property -->
+                <logger level="INFO" message='#["Updating existing property $(payload.propertyId) in ERS"]' />
+
+                <db:update config-ref="ERS_HANA_Database_Config">
+                    <db:sql><![CDATA[UPDATE ${ers.schema}.REAL_ESTATE_PROPERTIES
+                        SET PROPERTY_TYPE = :propertyType,
+                            STREET = :street,
+                            CITY = :city,
+                            STATE = :state,
+                            POSTAL_CODE = :postalCode,
+                            COUNTRY = :country,
+                            CURRENT_VALUE = :currentValue,
+                            CURRENCY = :currency,
+                            VALUATION_DATE = :valuationDate,
+                            OWNER_ID = :ownerId,
+                            OWNER_NAME = :ownerName,
+                            STATUS = :status,
+                            SOURCE_SYSTEM = :sourceSystem,
+                            LAST_MODIFIED_DATE = CURRENT_TIMESTAMP
+                        WHERE PROPERTY_ID = :propertyId]]></db:sql>
+                    <db:input-parameters><![CDATA[#[{
+                        propertyId: payload.propertyId,
+                        propertyType: payload.propertyType,
+                        street: payload.address.street,
+                        city: payload.address.city,
+                        state: payload.address.state,
+                        postalCode: payload.address.postalCode,
+                        country: payload.address.country,
+                        currentValue: payload.valuation.currentValue,
+                        currency: payload.valuation.currency,
+                        valuationDate: payload.valuation.valuationDate,
+                        ownerId: payload.ownership.ownerId,
+                        ownerName: payload.ownership.ownerName,
+                        status: payload.status,
+                        sourceSystem: payload.sourceSystem
+                    }]]]></db:input-parameters>
+                </db:update>
+
+                <set-variable variableName="operation" value="updated" />
+            </when>
+            <otherwise>
+                <!-- Insert New Property -->
+                <logger level="INFO" message='#["Inserting new property $(payload.propertyId) into ERS"]' />
+
+                <db:insert config-ref="ERS_HANA_Database_Config">
+                    <db:sql><![CDATA[INSERT INTO ${ers.schema}.REAL_ESTATE_PROPERTIES
+                        (PROPERTY_ID, PROPERTY_TYPE, STREET, CITY, STATE, POSTAL_CODE, COUNTRY,
+                         CURRENT_VALUE, CURRENCY, VALUATION_DATE, OWNER_ID, OWNER_NAME,
+                         STATUS, SOURCE_SYSTEM, CREATED_DATE, LAST_MODIFIED_DATE)
+                        VALUES (:propertyId, :propertyType, :street, :city, :state, :postalCode, :country,
+                                :currentValue, :currency, :valuationDate, :ownerId, :ownerName,
+                                :status, :sourceSystem, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)]]></db:sql>
+                    <db:input-parameters><![CDATA[#[{
+                        propertyId: payload.propertyId,
+                        propertyType: payload.propertyType,
+                        street: payload.address.street,
+                        city: payload.address.city,
+                        state: payload.address.state,
+                        postalCode: payload.address.postalCode,
+                        country: payload.address.country,
+                        currentValue: payload.valuation.currentValue,
+                        currency: payload.valuation.currency,
+                        valuationDate: payload.valuation.valuationDate,
+                        ownerId: payload.ownership.ownerId,
+                        ownerName: payload.ownership.ownerName,
+                        status: payload.status,
+                        sourceSystem: payload.sourceSystem
+                    }]]]></db:input-parameters>
+                </db:insert>
+
+                <set-variable variableName="operation" value="created" />
+            </otherwise>
+        </choice>
+
+        <!-- Return Success Response -->
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    success: true,
+    message: "Property " ++ vars.operation ++ " successfully in ERS",
+    propertyId: attributes.requestPayload.propertyId,
+    timestamp: now()
+}]]></ee:set-payload>
+            </ee:message>
+            <ee:variables>
+                <ee:set-variable variableName="httpStatus"><![CDATA[#[if(vars.operation == "created") 201 else 200]]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <logger level="INFO"
+                message='#["Successfully $(vars.operation) property in ERS - PropertyId: $(attributes.requestPayload.propertyId), CorrelationId: $(vars.correlationId)"]' />
+    </flow>
+
+    <!-- GET /properties - Retrieve Properties from ERS -->
+    <flow name="get:\properties:sys-ers-realestate-gf-api-config">
+        <logger level="INFO" message='#["Fetching properties from ERS - CorrelationId: $(vars.correlationId)"]' />
+
+        <db:select config-ref="ERS_HANA_Database_Config">
+            <db:sql><![CDATA[SELECT
+                PROPERTY_ID as propertyId,
+                PROPERTY_TYPE as propertyType,
+                STREET as street,
+                CITY as city,
+                STATE as state,
+                POSTAL_CODE as postalCode,
+                COUNTRY as country,
+                CURRENT_VALUE as currentValue,
+                CURRENCY as currency,
+                VALUATION_DATE as valuationDate,
+                OWNER_ID as ownerId,
+                OWNER_NAME as ownerName,
+                STATUS as status,
+                SOURCE_SYSTEM as sourceSystem,
+                LAST_MODIFIED_DATE as lastModifiedDate
+            FROM ${ers.schema}.REAL_ESTATE_PROPERTIES
+            WHERE (:status IS NULL OR STATUS = :status)
+            ORDER BY LAST_MODIFIED_DATE DESC
+            LIMIT :limit]]></db:sql>
+            <db:input-parameters><![CDATA[#[{
+                status: attributes.queryParams.status,
+                limit: attributes.queryParams.limit default 100
+            }]]]></db:input-parameters>
+        </db:select>
+
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <logger level="INFO"
+                message='#["Successfully fetched $(sizeOf(payload)) properties from ERS - CorrelationId: $(vars.correlationId)"]' />
+    </flow>
+
+    <!-- GET /properties/{propertyId} - Get Specific Property -->
+    <flow name="get:\properties\(propertyId):sys-ers-realestate-gf-api-config">
+        <set-variable variableName="propertyId" value="#[attributes.uriParams.propertyId]" />
+
+        <logger level="INFO"
+                message='#["Fetching property $(vars.propertyId) from ERS - CorrelationId: $(vars.correlationId)"]' />
+
+        <db:select config-ref="ERS_HANA_Database_Config">
+            <db:sql><![CDATA[SELECT
+                PROPERTY_ID as propertyId,
+                PROPERTY_TYPE as propertyType,
+                STREET as street,
+                CITY as city,
+                STATE as state,
+                POSTAL_CODE as postalCode,
+                COUNTRY as country,
+                CURRENT_VALUE as currentValue,
+                CURRENCY as currency,
+                VALUATION_DATE as valuationDate,
+                OWNER_ID as ownerId,
+                OWNER_NAME as ownerName,
+                STATUS as status,
+                SOURCE_SYSTEM as sourceSystem,
+                LAST_MODIFIED_DATE as lastModifiedDate
+            FROM ${ers.schema}.REAL_ESTATE_PROPERTIES
+            WHERE PROPERTY_ID = :propertyId]]></db:sql>
+            <db:input-parameters><![CDATA[#[{propertyId: vars.propertyId}]]]></db:input-parameters>
+        </db:select>
+
+        <choice>
+            <when expression="#[isEmpty(payload)]">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    code: "NOT_FOUND",
+    message: "Property with ID $(vars.propertyId) not found in ERS",
+    correlationId: vars.correlationId,
+    timestamp: now()
+}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </when>
+            <otherwise>
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload[0]]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+            </otherwise>
+        </choice>
+    </flow>
+
+    <!-- Health Check -->
+    <flow name="get:\health:sys-ers-realestate-gf-api-config">
+        <try>
+            <db:select config-ref="ERS_HANA_DATABASE_Config">
+                <db:sql>SELECT 1 FROM DUMMY</db:sql>
+            </db:select>
+            <set-variable variableName="dbStatus" value="CONNECTED" />
+            <error-handler>
+                <on-error-continue>
+                    <set-variable variableName="dbStatus" value="DISCONNECTED" />
+                </on-error-continue>
+            </error-handler>
+        </try>
+
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status: "UP",
+    timestamp: now(),
+    application: p('app.name'),
+    environment: p('env'),
+    database: vars.dbStatus default "UNKNOWN"
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+
+</mule>

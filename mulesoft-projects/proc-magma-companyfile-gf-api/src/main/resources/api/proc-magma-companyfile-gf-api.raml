@@ -1,0 +1,133 @@
+#%RAML 1.0
+title: MAGMA Company File Processing API
+version: v1
+baseUri: https://api.organization.com/proc/magma/companyfile/{version}
+mediaType: [application/json]
+
+documentation:
+  - title: Overview
+    content: |
+      This Process API orchestrates company file data processing and transformation
+      between MDM and ERS systems for real estate data synchronization.
+
+traits:
+  client-id-required:
+    headers:
+      client_id:
+        type: string
+        required: true
+      client_secret:
+        type: string
+        required: true
+  correlation-id:
+    headers:
+      x-correlation-id:
+        type: string
+        required: false
+
+types:
+  ProcessingRequest:
+    type: object
+    properties:
+      processType: string
+      sourceSystem: string
+      targetSystem: string
+      filters?:
+        type: object
+        properties:
+          dateFrom?: datetime
+          dateTo?: datetime
+          propertyType?: string
+      options?:
+        type: object
+        properties:
+          batchSize?: integer
+          asyncProcessing?: boolean
+
+  ProcessingResponse:
+    type: object
+    properties:
+      processId: string
+      status: string
+      startTime: datetime
+      recordsProcessed?: integer
+      recordsFailed?: integer
+      message: string
+
+  Error:
+    type: object
+    properties:
+      code: string
+      message: string
+      correlationId?: string
+      timestamp: datetime
+
+/process:
+  post:
+    description: Initiate company file processing from MDM to ERS
+    is: [client-id-required, correlation-id]
+    body:
+      application/json:
+        type: ProcessingRequest
+        example: |
+          {
+            "processType": "REAL_ESTATE_SYNC",
+            "sourceSystem": "MDM",
+            "targetSystem": "ERS",
+            "filters": {
+              "dateFrom": "2024-01-01T00:00:00Z",
+              "propertyType": "COMMERCIAL"
+            },
+            "options": {
+              "batchSize": 100,
+              "asyncProcessing": true
+            }
+          }
+    responses:
+      202:
+        body:
+          application/json:
+            type: ProcessingResponse
+            example: |
+              {
+                "processId": "PROC-20240115-001",
+                "status": "INITIATED",
+                "startTime": "2024-01-15T10:00:00Z",
+                "message": "Processing initiated successfully"
+              }
+      400:
+        body:
+          application/json:
+            type: Error
+
+/process/{processId}/status:
+  get:
+    description: Get processing status
+    is: [client-id-required, correlation-id]
+    responses:
+      200:
+        body:
+          application/json:
+            type: ProcessingResponse
+            example: |
+              {
+                "processId": "PROC-20240115-001",
+                "status": "PROCESSING",
+                "startTime": "2024-01-15T10:00:00Z",
+                "recordsProcessed": 250,
+                "recordsFailed": 5,
+                "message": "Processing in progress"
+              }
+
+/health:
+  get:
+    description: Health check endpoint
+    responses:
+      200:
+        body:
+          application/json:
+            example: |
+              {
+                "status": "UP",
+                "timestamp": "2024-01-15T10:00:00Z"
+              }

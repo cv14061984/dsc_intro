@@ -1,0 +1,215 @@
+#%RAML 1.0
+title: MDM Real Estate Experience API
+version: v1
+baseUri: https://api.organization.com/mdm/realestate/{version}
+mediaType: [application/json]
+
+documentation:
+  - title: Overview
+    content: |
+      This API provides access to MDM Real Estate data for integration with ERS system.
+      It exposes real estate properties, valuations, and related master data.
+
+traits:
+  client-id-required:
+    headers:
+      client_id:
+        type: string
+        description: Client ID for API authentication
+        required: true
+      client_secret:
+        type: string
+        description: Client secret for API authentication
+        required: true
+  correlation-id:
+    headers:
+      x-correlation-id:
+        type: string
+        description: Unique identifier for request tracing
+        required: false
+        example: "550e8400-e29b-41d4-a716-446655440000"
+
+types:
+  RealEstateProperty:
+    type: object
+    properties:
+      propertyId: string
+      propertyType: string
+      address:
+        type: object
+        properties:
+          street: string
+          city: string
+          state: string
+          postalCode: string
+          country: string
+      valuation:
+        type: object
+        properties:
+          currentValue: number
+          currency: string
+          valuationDate: datetime
+          valuationMethod: string
+      ownership:
+        type: object
+        properties:
+          ownerId: string
+          ownerName: string
+          ownershipType: string
+          acquisitionDate: datetime
+      status: string
+      createdDate: datetime
+      lastModifiedDate: datetime
+      source: string
+
+  Error:
+    type: object
+    properties:
+      code: string
+      message: string
+      correlationId?: string
+      timestamp: datetime
+
+/properties:
+  get:
+    description: Retrieve real estate properties from MDM
+    is: [client-id-required, correlation-id]
+    queryParameters:
+      propertyType:
+        type: string
+        required: false
+        description: Filter by property type (COMMERCIAL, RESIDENTIAL, INDUSTRIAL)
+      status:
+        type: string
+        required: false
+        description: Filter by status (ACTIVE, INACTIVE, PENDING)
+      lastModifiedFrom:
+        type: datetime
+        required: false
+        description: Retrieve properties modified after this date
+      limit:
+        type: integer
+        required: false
+        default: 100
+        description: Maximum number of records to return
+      offset:
+        type: integer
+        required: false
+        default: 0
+        description: Number of records to skip
+    responses:
+      200:
+        body:
+          application/json:
+            type: object
+            properties:
+              data: RealEstateProperty[]
+              metadata:
+                type: object
+                properties:
+                  totalCount: integer
+                  limit: integer
+                  offset: integer
+            example: |
+              {
+                "data": [
+                  {
+                    "propertyId": "PROP-001234",
+                    "propertyType": "COMMERCIAL",
+                    "address": {
+                      "street": "123 Main Street",
+                      "city": "New York",
+                      "state": "NY",
+                      "postalCode": "10001",
+                      "country": "USA"
+                    },
+                    "valuation": {
+                      "currentValue": 5000000.00,
+                      "currency": "USD",
+                      "valuationDate": "2024-01-15T10:00:00Z",
+                      "valuationMethod": "MARKET_COMPARISON"
+                    },
+                    "ownership": {
+                      "ownerId": "OWN-5678",
+                      "ownerName": "ABC Corporation",
+                      "ownershipType": "FULL",
+                      "acquisitionDate": "2020-05-20T00:00:00Z"
+                    },
+                    "status": "ACTIVE",
+                    "createdDate": "2020-05-21T08:30:00Z",
+                    "lastModifiedDate": "2024-01-15T10:00:00Z",
+                    "source": "MDM"
+                  }
+                ],
+                "metadata": {
+                  "totalCount": 1,
+                  "limit": 100,
+                  "offset": 0
+                }
+              }
+      400:
+        body:
+          application/json:
+            type: Error
+            example: |
+              {
+                "code": "INVALID_REQUEST",
+                "message": "Invalid query parameter provided",
+                "correlationId": "550e8400-e29b-41d4-a716-446655440000",
+                "timestamp": "2024-01-15T10:00:00Z"
+              }
+      401:
+        body:
+          application/json:
+            type: Error
+            example: |
+              {
+                "code": "UNAUTHORIZED",
+                "message": "Invalid or missing credentials",
+                "timestamp": "2024-01-15T10:00:00Z"
+              }
+      500:
+        body:
+          application/json:
+            type: Error
+            example: |
+              {
+                "code": "INTERNAL_ERROR",
+                "message": "An internal error occurred",
+                "correlationId": "550e8400-e29b-41d4-a716-446655440000",
+                "timestamp": "2024-01-15T10:00:00Z"
+              }
+
+  /{propertyId}:
+    get:
+      description: Retrieve a specific property by ID
+      is: [client-id-required, correlation-id]
+      responses:
+        200:
+          body:
+            application/json:
+              type: RealEstateProperty
+        404:
+          body:
+            application/json:
+              type: Error
+              example: |
+                {
+                  "code": "NOT_FOUND",
+                  "message": "Property not found",
+                  "correlationId": "550e8400-e29b-41d4-a716-446655440000",
+                  "timestamp": "2024-01-15T10:00:00Z"
+                }
+
+/health:
+  get:
+    description: Health check endpoint
+    responses:
+      200:
+        body:
+          application/json:
+            example: |
+              {
+                "status": "UP",
+                "timestamp": "2024-01-15T10:00:00Z"
+              }

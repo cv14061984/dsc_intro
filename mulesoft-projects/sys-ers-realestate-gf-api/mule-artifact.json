@@ -1,0 +1,20 @@
+{
+  "minMuleVersion": "4.6.0",
+  "secureProperties": [
+    "ers.db.password",
+    "api.client.secret",
+    "encryption.key"
+  ],
+  "redeploymentEnabled": true,
+  "name": "sys-ers-realestate-gf-api",
+  "classLoaderModelLoaderDescriptor": {
+    "id": "mule",
+    "attributes": {
+      "exportedResources": []
+    }
+  },
+  "bundleDescriptorLoader": {
+    "id": "mule",
+    "attributes": {}
+  }
+}

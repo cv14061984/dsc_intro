@@ -1,0 +1,6 @@
+{
+  "minMuleVersion": "4.6.0",
+  "secureProperties": ["db.password", "api.client.secret"],
+  "redeploymentEnabled": true,
+  "name": "sys-magma-grmdm-gf-api"
+}

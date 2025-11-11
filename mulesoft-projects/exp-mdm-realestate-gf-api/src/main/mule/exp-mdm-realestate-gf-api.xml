@@ -1,0 +1,314 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:db="http://www.mulesoft.org/schema/mule/db"
+      xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+        http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd">
+
+    <!-- Main API Listener Flow -->
+    <flow name="exp-mdm-realestate-gf-api-main">
+        <http:listener config-ref="HTTP_Listener_config"
+                      path="${http.base.path}/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+
+        <!-- Set Correlation ID -->
+        <set-variable variableName="correlationId"
+                     value="#[attributes.headers['x-correlation-id'] default uuid()]" />
+
+        <!-- Log Request -->
+        <logger level="INFO"
+                message='#["Request received - CorrelationId: $(vars.correlationId), Path: $(attributes.requestPath), Method: $(attributes.method)"]' />
+
+        <!-- Route to APIKit -->
+        <apikit:router config-ref="exp-mdm-realestate-gf-api-config" />
+
+        <!-- Error Handler Reference -->
+        <error-handler ref="global-error-handler" />
+    </flow>
+
+    <!-- APIKit Console Flow -->
+    <flow name="exp-mdm-realestate-gf-api-console">
+        <http:listener config-ref="HTTP_Listener_config"
+                      path="/console/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+        </http:listener>
+        <apikit:console config-ref="exp-mdm-realestate-gf-api-config" />
+    </flow>
+
+    <!-- GET /properties Implementation -->
+    <flow name="get:\properties:exp-mdm-realestate-gf-api-config">
+        <logger level="INFO"
+                message='#["Fetching properties from MDM - CorrelationId: $(vars.correlationId)"]' />
+
+        <!-- Build SQL Query with Filters -->
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/java
+var queryParams = attributes.queryParams
+var propertyType = queryParams.propertyType
+var status = queryParams.status
+var lastModifiedFrom = queryParams.lastModifiedFrom
+var limit = queryParams.limit default 100
+var offset = queryParams.offset default 0
+---
+{
+    propertyType: propertyType,
+    status: status,
+    lastModifiedFrom: lastModifiedFrom,
+    limit: limit,
+    offset: offset
+}]]></ee:set-payload>
+            </ee:message>
+            <ee:variables>
+                <ee:set-variable variableName="queryFilters"><![CDATA[%dw 2.0
+output application/java
+var queryParams = attributes.queryParams
+---
+{
+    propertyType: queryParams.propertyType,
+    status: queryParams.status,
+    lastModifiedFrom: queryParams.lastModifiedFrom
+}]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <!-- Query MDM Database -->
+        <db:select config-ref="MDM_Database_Config">
+            <db:sql><![CDATA[SELECT
+                p.PROPERTY_ID as propertyId,
+                p.PROPERTY_TYPE as propertyType,
+                p.STREET as street,
+                p.CITY as city,
+                p.STATE as state,
+                p.POSTAL_CODE as postalCode,
+                p.COUNTRY as country,
+                p.CURRENT_VALUE as currentValue,
+                p.CURRENCY as currency,
+                p.VALUATION_DATE as valuationDate,
+                p.VALUATION_METHOD as valuationMethod,
+                p.OWNER_ID as ownerId,
+                p.OWNER_NAME as ownerName,
+                p.OWNERSHIP_TYPE as ownershipType,
+                p.ACQUISITION_DATE as acquisitionDate,
+                p.STATUS as status,
+                p.CREATED_DATE as createdDate,
+                p.LAST_MODIFIED_DATE as lastModifiedDate,
+                p.SOURCE as source
+            FROM MDM_REAL_ESTATE_PROPERTIES p
+            WHERE 1=1
+                AND (:propertyType IS NULL OR p.PROPERTY_TYPE = :propertyType)
+                AND (:status IS NULL OR p.STATUS = :status)
+                AND (:lastModifiedFrom IS NULL OR p.LAST_MODIFIED_DATE >= TO_DATE(:lastModifiedFrom, 'YYYY-MM-DD"T"HH24:MI:SS'))
+            ORDER BY p.LAST_MODIFIED_DATE DESC
+            OFFSET :offset ROWS
+            FETCH NEXT :limit ROWS ONLY]]></db:sql>
+            <db:input-parameters><![CDATA[#[{
+                propertyType: payload.propertyType,
+                status: payload.status,
+                lastModifiedFrom: payload.lastModifiedFrom,
+                limit: payload.limit,
+                offset: payload.offset
+            }]]]></db:input-parameters>
+        </db:select>
+
+        <!-- Get Total Count -->
+        <set-variable variableName="properties" value="#[payload]" />
+
+        <db:select config-ref="MDM_Database_Config">
+            <db:sql><![CDATA[SELECT COUNT(*) as totalCount
+            FROM MDM_REAL_ESTATE_PROPERTIES p
+            WHERE 1=1
+                AND (:propertyType IS NULL OR p.PROPERTY_TYPE = :propertyType)
+                AND (:status IS NULL OR p.STATUS = :status)
+                AND (:lastModifiedFrom IS NULL OR p.LAST_MODIFIED_DATE >= TO_DATE(:lastModifiedFrom, 'YYYY-MM-DD"T"HH24:MI:SS'))]]></db:sql>
+            <db:input-parameters><![CDATA[#[{
+                propertyType: vars.queryFilters.propertyType,
+                status: vars.queryFilters.status,
+                lastModifiedFrom: vars.queryFilters.lastModifiedFrom
+            }]]]></db:input-parameters>
+        </db:select>
+
+        <set-variable variableName="totalCount" value="#[payload[0].totalCount]" />
+
+        <!-- Transform to API Response Format -->
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    data: vars.properties map (property) -> {
+        propertyId: property.propertyId,
+        propertyType: property.propertyType,
+        address: {
+            street: property.street,
+            city: property.city,
+            state: property.state,
+            postalCode: property.postalCode,
+            country: property.country
+        },
+        valuation: {
+            currentValue: property.currentValue,
+            currency: property.currency,
+            valuationDate: property.valuationDate,
+            valuationMethod: property.valuationMethod
+        },
+        ownership: {
+            ownerId: property.ownerId,
+            ownerName: property.ownerName,
+            ownershipType: property.ownershipType,
+            acquisitionDate: property.acquisitionDate
+        },
+        status: property.status,
+        createdDate: property.createdDate,
+        lastModifiedDate: property.lastModifiedDate,
+        source: property.source
+    },
+    metadata: {
+        totalCount: vars.totalCount,
+        limit: attributes.queryParams.limit default 100,
+        offset: attributes.queryParams.offset default 0
+    }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <logger level="INFO"
+                message='#["Successfully fetched $(sizeOf(payload.data)) properties - CorrelationId: $(vars.correlationId)"]' />
+    </flow>
+
+    <!-- GET /properties/{propertyId} Implementation -->
+    <flow name="get:\properties\(propertyId):exp-mdm-realestate-gf-api-config">
+        <set-variable variableName="propertyId" value="#[attributes.uriParams.propertyId]" />
+
+        <logger level="INFO"
+                message='#["Fetching property $(vars.propertyId) from MDM - CorrelationId: $(vars.correlationId)"]' />
+
+        <!-- Query Single Property -->
+        <db:select config-ref="MDM_Database_Config">
+            <db:sql><![CDATA[SELECT
+                p.PROPERTY_ID as propertyId,
+                p.PROPERTY_TYPE as propertyType,
+                p.STREET as street,
+                p.CITY as city,
+                p.STATE as state,
+                p.POSTAL_CODE as postalCode,
+                p.COUNTRY as country,
+                p.CURRENT_VALUE as currentValue,
+                p.CURRENCY as currency,
+                p.VALUATION_DATE as valuationDate,
+                p.VALUATION_METHOD as valuationMethod,
+                p.OWNER_ID as ownerId,
+                p.OWNER_NAME as ownerName,
+                p.OWNERSHIP_TYPE as ownershipType,
+                p.ACQUISITION_DATE as acquisitionDate,
+                p.STATUS as status,
+                p.CREATED_DATE as createdDate,
+                p.LAST_MODIFIED_DATE as lastModifiedDate,
+                p.SOURCE as source
+            FROM MDM_REAL_ESTATE_PROPERTIES p
+            WHERE p.PROPERTY_ID = :propertyId]]></db:sql>
+            <db:input-parameters><![CDATA[#[{
+                propertyId: vars.propertyId
+            }]]]></db:input-parameters>
+        </db:select>
+
+        <!-- Check if Property Exists -->
+        <choice>
+            <when expression="#[isEmpty(payload)]">
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    code: "NOT_FOUND",
+    message: "Property with ID $(vars.propertyId) not found",
+    correlationId: vars.correlationId,
+    timestamp: now()
+}]]></ee:set-payload>
+                    </ee:message>
+                    <ee:variables>
+                        <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                    </ee:variables>
+                </ee:transform>
+            </when>
+            <otherwise>
+                <!-- Transform to API Response Format -->
+                <ee:transform>
+                    <ee:message>
+                        <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+var property = payload[0]
+---
+{
+    propertyId: property.propertyId,
+    propertyType: property.propertyType,
+    address: {
+        street: property.street,
+        city: property.city,
+        state: property.state,
+        postalCode: property.postalCode,
+        country: property.country
+    },
+    valuation: {
+        currentValue: property.currentValue,
+        currency: property.currency,
+        valuationDate: property.valuationDate,
+        valuationMethod: property.valuationMethod
+    },
+    ownership: {
+        ownerId: property.ownerId,
+        ownerName: property.ownerName,
+        ownershipType: property.ownershipType,
+        acquisitionDate: property.acquisitionDate
+    },
+    status: property.status,
+    createdDate: property.createdDate,
+    lastModifiedDate: property.lastModifiedDate,
+    source: property.source
+}]]></ee:set-payload>
+                    </ee:message>
+                </ee:transform>
+
+                <logger level="INFO"
+                        message='#["Successfully fetched property $(vars.propertyId) - CorrelationId: $(vars.correlationId)"]' />
+            </otherwise>
+        </choice>
+    </flow>
+
+    <!-- GET /health Implementation -->
+    <flow name="get:\health:exp-mdm-realestate-gf-api-config">
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status: "UP",
+    timestamp: now(),
+    application: p('app.name'),
+    environment: p('env')
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+
+</mule>

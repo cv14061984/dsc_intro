@@ -1,0 +1,109 @@
+# MuleSoft specific
+*.mule
+.mule/
+.studio/
+flows/
+target/
+.mule_ee_license.lic
+
+# Maven
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+
+# Anypoint Studio
+.metadata/
+.recommenders/
+.settings/
+*.launch
+*.iml
+.idea/
+.classpath
+.project
+
+# Secure Properties (DO NOT COMMIT)
+**/secure-*.properties
+**/secure.properties
+**/*-secure.properties
+
+# Environment Specific (committed templates only)
+# Actual credentials should be in CI/CD variables
+# **/dev.properties
+# **/test.properties
+# **/prod.properties
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Build artifacts
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# IDE
+*.iws
+*.ipr
+out/
+.vscode/
+
+# Test results
+TEST-*.xml
+target/surefire-reports/
+target/failsafe-reports/
+munit-reports/
+
+# Backup files
+*.bak
+*.tmp
+*.old
+*~
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Cache
+.cache/
+.npm/
+.eslintcache
+
+# Certificates and keys (NEVER COMMIT)
+*.pem
+*.key
+*.crt
+*.p12
+*.jks
+*.keystore
+*.truststore
+
+# Database
+*.sql
+*.db
+*.sqlite
+
+# Temporary files
+tmp/
+temp/

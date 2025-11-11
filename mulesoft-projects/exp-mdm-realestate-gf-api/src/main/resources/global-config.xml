@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:db="http://www.mulesoft.org/schema/mule/db"
+      xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties"
+      xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+        http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd
+        http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd">
+
+    <!-- Configuration Properties -->
+    <configuration-properties file="properties/${env}.properties" />
+
+    <!-- Secure Properties -->
+    <secure-properties:config name="Secure_Properties_Config"
+                              file="properties/secure-${env}.properties"
+                              key="${encryption.key}">
+        <secure-properties:encrypt algorithm="Blowfish" />
+    </secure-properties:config>
+
+    <!-- Global Configuration Properties -->
+    <global-property name="env" value="${mule.env}" />
+
+    <!-- HTTP Listener Configuration -->
+    <http:listener-config name="HTTP_Listener_config">
+        <http:listener-connection host="${http.host}" port="${http.port}" />
+    </http:listener-config>
+
+    <!-- HTTP Request Configuration for System APIs -->
+    <http:request-config name="HTTP_Request_Config_GRMDM">
+        <http:request-connection host="${sys.magma.grmdm.host}"
+                                port="${sys.magma.grmdm.port}"
+                                protocol="HTTPS">
+            <http:client-socket-properties>
+                <http:connection-timeout value="${http.connection.timeout}" />
+                <http:read-timeout value="${http.response.timeout}" />
+            </http:client-socket-properties>
+        </http:request-connection>
+    </http:request-config>
+
+    <http:request-config name="HTTP_Request_Config_ERS">
+        <http:request-connection host="${sys.ers.realestate.host}"
+                                port="${sys.ers.realestate.port}"
+                                protocol="HTTPS">
+            <http:client-socket-properties>
+                <http:connection-timeout value="${http.connection.timeout}" />
+                <http:read-timeout value="${http.response.timeout}" />
+            </http:client-socket-properties>
+        </http:request-connection>
+    </http:request-config>
+
+    <http:request-config name="HTTP_Request_Config_Processing">
+        <http:request-connection host="${proc.magma.companyfile.host}"
+                                port="${proc.magma.companyfile.port}"
+                                protocol="HTTPS">
+            <http:client-socket-properties>
+                <http:connection-timeout value="${http.connection.timeout}" />
+                <http:read-timeout value="${http.response.timeout}" />
+            </http:client-socket-properties>
+        </http:request-connection>
+    </http:request-config>
+
+    <!-- MDM Database Configuration -->
+    <db:config name="MDM_Database_Config">
+        <db:oracle-connection
+            host="${mdm.db.host}"
+            port="${mdm.db.port}"
+            user="${mdm.db.user}"
+            password="${mdm.db.password}"
+            serviceName="${mdm.db.service}">
+            <db:pooling-profile
+                maxPoolSize="${mdm.db.pool.max.size}"
+                minPoolSize="${mdm.db.pool.min.size}" />
+            <db:column-types>
+                <db:column-type id="2003" typeName="CLOB" />
+            </db:column-types>
+        </db:oracle-connection>
+    </db:config>
+
+    <!-- APIKit Configuration -->
+    <apikit:config name="exp-mdm-realestate-gf-api-config"
+                   api="api/exp-mdm-realestate-gf-api.raml"
+                   outboundHeadersMapName="outboundHeaders"
+                   httpStatusVarName="httpStatus" />
+
+</mule>

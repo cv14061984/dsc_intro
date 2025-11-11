@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:db="http://www.mulesoft.org/schema/mule/db"
+      xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+        http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd">
+
+    <configuration-properties file="properties/${env}.properties" />
+
+    <http:listener-config name="HTTP_Listener_config">
+        <http:listener-connection host="${http.host}" port="${http.port}" />
+    </http:listener-config>
+
+    <db:config name="Database_Config">
+        <db:oracle-connection host="${db.host}" port="${db.port}" user="${db.user}"
+                             password="${db.password}" serviceName="${db.service}" />
+    </db:config>
+
+    <apikit:config name="sys-magma-grmdm-gf-api-config" api="api/sys-magma-grmdm-gf-api.raml" />
+
+    <flow name="sys-magma-grmdm-main">
+        <http:listener config-ref="HTTP_Listener_config" path="${http.base.path}/*" />
+        <apikit:router config-ref="sys-magma-grmdm-gf-api-config" />
+    </flow>
+
+    <flow name="get:\companies:sys-magma-grmdm-gf-api-config">
+        <db:select config-ref="Database_Config">
+            <db:sql>SELECT company_id as companyId, company_name as companyName,
+                    status, created_date as createdDate FROM GRMDM_COMPANIES</db:sql>
+        </db:select>
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+
+    <flow name="get:\health:sys-magma-grmdm-gf-api-config">
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{status: "UP", timestamp: now()}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+
+</mule>

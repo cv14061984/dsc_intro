@@ -1,0 +1,280 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+
+    <!-- Global Error Handler -->
+    <error-handler name="global-error-handler">
+
+        <!-- APIKit Bad Request Error -->
+        <on-error-propagate type="APIKIT:BAD_REQUEST">
+            <ee:transform>
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    code: "INVALID_REQUEST",
+    message: error.description default "Bad request - invalid input parameters",
+    correlationId: vars.correlationId,
+    timestamp: now()
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus">400</ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+            <logger level="WARN"
+                    message='#["Bad Request Error - CorrelationId: $(vars.correlationId), Error: $(error.description)"]' />
+        </on-error-propagate>
+
+        <!-- APIKit Not Found Error -->
+        <on-error-propagate type="APIKIT:NOT_FOUND">
+            <ee:transform>
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    code: "RESOURCE_NOT_FOUND",
+    message: "The requested resource was not found",
+    correlationId: vars.correlationId,
+    timestamp: now()
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus">404</ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+            <logger level="WARN"
+                    message='#["Resource Not Found - CorrelationId: $(vars.correlationId), Path: $(attributes.requestPath)"]' />
+        </on-error-propagate>
+
+        <!-- APIKit Method Not Allowed Error -->
+        <on-error-propagate type="APIKIT:METHOD_NOT_ALLOWED">
+            <ee:transform>
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    code: "METHOD_NOT_ALLOWED",
+    message: "HTTP method not allowed for this resource",
+    correlationId: vars.correlationId,
+    timestamp: now()
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus">405</ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+            <logger level="WARN"
+                    message='#["Method Not Allowed - CorrelationId: $(vars.correlationId), Method: $(attributes.method)"]' />
+        </on-error-propagate>
+
+        <!-- APIKit Not Acceptable Error -->
+        <on-error-propagate type="APIKIT:NOT_ACCEPTABLE">
+            <ee:transform>
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    code: "NOT_ACCEPTABLE",
+    message: "The requested media type is not acceptable",
+    correlationId: vars.correlationId,
+    timestamp: now()
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus">406</ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+            <logger level="WARN"
+                    message='#["Not Acceptable - CorrelationId: $(vars.correlationId)"]' />
+        </on-error-propagate>
+
+        <!-- Database Connectivity Errors -->
+        <on-error-propagate type="DB:CONNECTIVITY, DB:CONNECTION_ERROR">
+            <ee:transform>
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    code: "DATABASE_CONNECTIVITY_ERROR",
+    message: "Unable to connect to the database. Please try again later.",
+    correlationId: vars.correlationId,
+    timestamp: now()
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus">503</ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+            <logger level="ERROR"
+                    message='#["Database Connectivity Error - CorrelationId: $(vars.correlationId), Error: $(error.description)"]' />
+        </on-error-propagate>
+
+        <!-- Database Query Errors -->
+        <on-error-propagate type="DB:QUERY_EXECUTION">
+            <ee:transform>
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    code: "DATABASE_QUERY_ERROR",
+    message: "An error occurred while executing database query",
+    correlationId: vars.correlationId,
+    timestamp: now()
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus">500</ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+            <logger level="ERROR"
+                    message='#["Database Query Error - CorrelationId: $(vars.correlationId), Error: $(error.description)"]' />
+        </on-error-propagate>
+
+        <!-- HTTP Connectivity Errors -->
+        <on-error-propagate type="HTTP:CONNECTIVITY">
+            <ee:transform>
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    code: "DOWNSTREAM_SERVICE_UNAVAILABLE",
+    message: "Unable to connect to downstream service. Please try again later.",
+    correlationId: vars.correlationId,
+    timestamp: now()
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus">503</ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+            <logger level="ERROR"
+                    message='#["HTTP Connectivity Error - CorrelationId: $(vars.correlationId), Error: $(error.description)"]' />
+        </on-error-propagate>
+
+        <!-- HTTP Timeout Errors -->
+        <on-error-propagate type="HTTP:TIMEOUT">
+            <ee:transform>
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    code: "REQUEST_TIMEOUT",
+    message: "Request timed out while waiting for response from downstream service",
+    correlationId: vars.correlationId,
+    timestamp: now()
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus">504</ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+            <logger level="ERROR"
+                    message='#["HTTP Timeout Error - CorrelationId: $(vars.correlationId), Error: $(error.description)"]' />
+        </on-error-propagate>
+
+        <!-- Validation Errors -->
+        <on-error-propagate type="VALIDATION:*">
+            <ee:transform>
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    code: "VALIDATION_ERROR",
+    message: error.description default "Validation failed",
+    correlationId: vars.correlationId,
+    timestamp: now()
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus">400</ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+            <logger level="WARN"
+                    message='#["Validation Error - CorrelationId: $(vars.correlationId), Error: $(error.description)"]' />
+        </on-error-propagate>
+
+        <!-- Transformation Errors -->
+        <on-error-propagate type="MULE:TRANSFORMATION">
+            <ee:transform>
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    code: "TRANSFORMATION_ERROR",
+    message: "An error occurred while transforming the data",
+    correlationId: vars.correlationId,
+    timestamp: now()
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus">500</ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+            <logger level="ERROR"
+                    message='#["Transformation Error - CorrelationId: $(vars.correlationId), Error: $(error.description)"]' />
+        </on-error-propagate>
+
+        <!-- Expression Errors -->
+        <on-error-propagate type="MULE:EXPRESSION">
+            <ee:transform>
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    code: "EXPRESSION_ERROR",
+    message: "An error occurred while evaluating expression",
+    correlationId: vars.correlationId,
+    timestamp: now()
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus">500</ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+            <logger level="ERROR"
+                    message='#["Expression Error - CorrelationId: $(vars.correlationId), Error: $(error.description)"]' />
+        </on-error-propagate>
+
+        <!-- Generic Error Handler - Catch All -->
+        <on-error-propagate type="ANY">
+            <ee:transform>
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    code: "INTERNAL_SERVER_ERROR",
+    message: "An unexpected error occurred. Please contact support.",
+    correlationId: vars.correlationId,
+    timestamp: now()
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus">500</ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+            <logger level="ERROR"
+                    message='#["Unexpected Error - CorrelationId: $(vars.correlationId), Type: $(error.errorType), Error: $(error.description)"]' />
+        </on-error-propagate>
+
+    </error-handler>
+
+</mule>

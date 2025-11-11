@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.organization.api</groupId>
+    <artifactId>sys-magma-grmdm-gf-api</artifactId>
+    <version>1.0.0</version>
+    <packaging>mule-application</packaging>
+
+    <name>sys-magma-grmdm-gf-api</name>
+    <description>System API for MAGMA GRMDM Integration</description>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <app.runtime>4.6.0</app.runtime>
+        <mule.maven.plugin.version>4.1.1</mule.maven.plugin.version>
+        <munit.version>3.1.0</munit.version>
+    </properties>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.mule.tools.maven</groupId>
+                <artifactId>mule-maven-plugin</artifactId>
+                <version>${mule.maven.plugin.version}</version>
+                <extensions>true</extensions>
+            </plugin>
+            <plugin>
+                <groupId>com.mulesoft.munit.tools</groupId>
+                <artifactId>munit-maven-plugin</artifactId>
+                <version>${munit.version}</version>
+                <executions>
+                    <execution>
+                        <id>test</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>test</goal>
+                            <goal>coverage-report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.mule.connectors</groupId>
+            <artifactId>mule-http-connector</artifactId>
+            <version>1.9.3</version>
+            <classifier>mule-plugin</classifier>
+        </dependency>
+        <dependency>
+            <groupId>org.mule.modules</groupId>
+            <artifactId>mule-apikit-module</artifactId>
+            <version>1.10.4</version>
+            <classifier>mule-plugin</classifier>
+        </dependency>
+        <dependency>
+            <groupId>org.mule.connectors</groupId>
+            <artifactId>mule-db-connector</artifactId>
+            <version>1.14.10</version>
+            <classifier>mule-plugin</classifier>
+        </dependency>
+        <dependency>
+            <groupId>com.mulesoft.modules</groupId>
+            <artifactId>mule-secure-configuration-property-module</artifactId>
+            <version>1.2.7</version>
+            <classifier>mule-plugin</classifier>
+        </dependency>
+    </dependencies>
+
+    <repositories>
+        <repository>
+            <id>anypoint-exchange-v3</id>
+            <name>Anypoint Exchange</name>
+            <url>https://maven.anypoint.mulesoft.com/api/v3/maven</url>
+        </repository>
+        <repository>
+            <id>mulesoft-releases</id>
+            <name>MuleSoft Releases Repository</name>
+            <url>https://repository.mulesoft.org/releases/</url>
+        </repository>
+    </repositories>
+
+    <pluginRepositories>
+        <pluginRepository>
+            <id>mulesoft-releases</id>
+            <name>MuleSoft Releases Repository</name>
+            <url>https://repository.mulesoft.org/releases/</url>
+        </pluginRepository>
+    </pluginRepositories>
+</project>

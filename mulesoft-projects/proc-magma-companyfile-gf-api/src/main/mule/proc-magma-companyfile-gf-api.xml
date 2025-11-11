@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:batch="http://www.mulesoft.org/schema/mule/batch"
+      xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd
+        http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd">
+
+    <configuration-properties file="properties/${env}.properties" />
+
+    <http:listener-config name="HTTP_Listener_config">
+        <http:listener-connection host="${http.host}" port="${http.port}" />
+    </http:listener-config>
+
+    <http:request-config name="HTTP_Request_MDM">
+        <http:request-connection host="${exp.mdm.realestate.host}" port="${exp.mdm.realestate.port}" protocol="HTTPS" />
+    </http:request-config>
+
+    <http:request-config name="HTTP_Request_ERS">
+        <http:request-connection host="${sys.ers.realestate.host}" port="${sys.ers.realestate.port}" protocol="HTTPS" />
+    </http:request-config>
+
+    <apikit:config name="proc-magma-companyfile-gf-api-config" api="api/proc-magma-companyfile-gf-api.raml" />
+
+    <!-- Main Flow -->
+    <flow name="proc-magma-companyfile-main">
+        <http:listener config-ref="HTTP_Listener_config" path="${http.base.path}/*" />
+        <set-variable variableName="correlationId" value="#[attributes.headers['x-correlation-id'] default uuid()]" />
+        <apikit:router config-ref="proc-magma-companyfile-gf-api-config" />
+    </flow>
+
+    <!-- Process Endpoint -->
+    <flow name="post:\process:application\json:proc-magma-companyfile-gf-api-config">
+        <set-variable variableName="processId" value="#['PROC-' ++ now() as String {format: 'yyyyMMdd-HHmmss'}]" />
+        <logger level="INFO" message='#["Processing initiated - ProcessId: $(vars.processId)"]' />
+
+        <async>
+            <flow-ref name="batch-processing-flow" />
+        </async>
+
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    processId: vars.processId,
+    status: "INITIATED",
+    startTime: now(),
+    message: "Processing initiated successfully"
+}]]></ee:set-payload>
+            </ee:message>
+            <ee:variables>
+                <ee:set-variable variableName="httpStatus">202</ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+    </flow>
+
+    <!-- Batch Processing Flow -->
+    <flow name="batch-processing-flow">
+        <logger level="INFO" message="Starting batch processing" />
+
+        <!-- Fetch data from MDM -->
+        <http:request method="GET" config-ref="HTTP_Request_MDM" path="${exp.mdm.realestate.base.path}/properties">
+            <http:headers><![CDATA[#[{
+                'client_id': p('exp.mdm.realestate.client.id'),
+                'client_secret': p('exp.mdm.realestate.client.secret')
+            }]]]></http:headers>
+        </http:request>
+
+        <batch:job jobName="real-estate-sync-batch">
+            <batch:process-records>
+                <batch:step name="transform-and-load-step">
+                    <ee:transform>
+                        <ee:message>
+                            <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+                        </ee:message>
+                    </ee:transform>
+
+                    <!-- Send to ERS -->
+                    <http:request method="POST" config-ref="HTTP_Request_ERS" path="${sys.ers.realestate.base.path}/properties">
+                        <http:headers><![CDATA[#[{
+                            'client_id': p('sys.ers.realestate.client.id'),
+                            'client_secret': p('sys.ers.realestate.client.secret'),
+                            'Content-Type': 'application/json'
+                        }]]]></http:headers>
+                    </http:request>
+                </batch:step>
+            </batch:process-records>
+        </batch:job>
+    </flow>
+
+    <!-- Health Check -->
+    <flow name="get:\health:proc-magma-companyfile-gf-api-config">
+        <ee:transform>
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status: "UP",
+    timestamp: now(),
+    application: p('app.name')
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </flow>
+
+</mule>

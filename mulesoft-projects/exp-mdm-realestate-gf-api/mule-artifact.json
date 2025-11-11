@@ -1,0 +1,20 @@
+{
+  "minMuleVersion": "4.6.0",
+  "secureProperties": [
+    "mdm.db.password",
+    "api.client.secret",
+    "encryption.key"
+  ],
+  "redeploymentEnabled": true,
+  "name": "exp-mdm-realestate-gf-api",
+  "classLoaderModelLoaderDescriptor": {
+    "id": "mule",
+    "attributes": {
+      "exportedResources": []
+    }
+  },
+  "bundleDescriptorLoader": {
+    "id": "mule",
+    "attributes": {}
+  }
+}
