@@ -1,0 +1,73 @@
+# MuleSoft Build Files
+target/
+*.jar
+*.war
+*.ear
+*.zip
+
+# MuleSoft Studio and Runtime
+.mule/
+.studio/
+flows/
+src/main/app/.mule
+.metadata/
+.classpath
+.project
+.settings/
+
+# Maven
+.mvn/
+mvnw
+mvnw.cmd
+
+# IDE Files
+*.iml
+*.ipr
+*.iws
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+velocity.log*
+
+# Secure Properties (DO NOT COMMIT!)
+*secure.properties
+*.key
+
+# Environment Variables
+.env
+.env.local
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Temporary Files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Node modules (if using npm)
+node_modules/
+
+# Backup Files
+*.bak
+*.backup
+
+# Test Results
+surefire-reports/
+test-output/
+
+# Exchange Documentation
+exchange-docs/
+
+# Anypoint Studio cache
+.polyglot.muleCache
+
+# CloudHub deployment descriptor
+cloudhub.properties

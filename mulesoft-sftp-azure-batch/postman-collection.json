@@ -1,0 +1,170 @@
+{
+  "info": {
+    "name": "SFTP to Azure Batch Integration",
+    "description": "API collection for testing SFTP to Azure Batch Integration",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8081",
+      "type": "string"
+    },
+    {
+      "key": "cloudhub_dev_url",
+      "value": "https://sftp-azure-batch-dev.cloudhub.io",
+      "type": "string"
+    },
+    {
+      "key": "cloudhub_qa_url",
+      "value": "https://sftp-azure-batch-qa.cloudhub.io",
+      "type": "string"
+    },
+    {
+      "key": "cloudhub_prod_url",
+      "value": "https://sftp-azure-batch-prod.cloudhub.io",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Local Environment",
+      "item": [
+        {
+          "name": "Trigger Batch Job - Local",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/trigger-batch",
+              "host": ["{{base_url}}"],
+              "path": ["trigger-batch"]
+            },
+            "description": "Manually trigger the batch job to process SFTP files"
+          },
+          "response": []
+        },
+        {
+          "name": "Health Check - Local",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/trigger-batch",
+              "host": ["{{base_url}}"],
+              "path": ["trigger-batch"]
+            },
+            "description": "Check if the application is running"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "CloudHub Development",
+      "item": [
+        {
+          "name": "Trigger Batch Job - Dev",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{cloudhub_dev_url}}/trigger-batch",
+              "host": ["{{cloudhub_dev_url}}"],
+              "path": ["trigger-batch"]
+            },
+            "description": "Manually trigger batch job in CloudHub Dev environment"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "CloudHub QA",
+      "item": [
+        {
+          "name": "Trigger Batch Job - QA",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{cloudhub_qa_url}}/trigger-batch",
+              "host": ["{{cloudhub_qa_url}}"],
+              "path": ["trigger-batch"]
+            },
+            "description": "Manually trigger batch job in CloudHub QA environment"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "CloudHub Production",
+      "item": [
+        {
+          "name": "Trigger Batch Job - Production",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{production_api_key}}",
+                "type": "text",
+                "description": "Add API key for production security"
+              }
+            ],
+            "url": {
+              "raw": "{{cloudhub_prod_url}}/trigger-batch",
+              "host": ["{{cloudhub_prod_url}}"],
+              "path": ["trigger-batch"]
+            },
+            "description": "Manually trigger batch job in CloudHub Production (use with caution)"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test('Status code is 202', function () {",
+          "    pm.response.to.have.status(202);",
+          "});",
+          "",
+          "pm.test('Response contains success message', function () {",
+          "    var jsonData = pm.response.json();",
+          "    pm.expect(jsonData.message).to.include('triggered successfully');",
+          "});"
+        ]
+      }
+    }
+  ]
+}

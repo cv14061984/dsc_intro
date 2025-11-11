@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:file="http://www.mulesoft.org/schema/mule/file"
+      xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties"
+      xmlns:tls="http://www.mulesoft.org/schema/mule/tls"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+        http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd
+        http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd">
+
+    <!-- Configuration Properties -->
+    <configuration-properties file="properties/${env}.properties" />
+
+    <!-- Secure Properties (Optional - for encrypting sensitive data) -->
+    <secure-properties:config name="Secure_Properties_Config"
+                              file="properties/secure/${env}-secure.properties"
+                              key="${encryption.key}"
+                              doc:name="Secure Properties Config">
+        <secure-properties:encrypt algorithm="Blowfish" />
+    </secure-properties:config>
+
+    <!-- Global Error Handler -->
+    <error-handler name="Global_Error_Handler">
+        <on-error-propagate enableNotifications="true"
+                           logException="true"
+                           doc:name="On Error Propagate"
+                           type="ANY">
+            <logger level="ERROR"
+                   doc:name="Log Error"
+                   message="Error occurred: #[error.description], Detail: #[error.detailedDescription]" />
+        </on-error-propagate>
+    </error-handler>
+
+    <!-- SFTP Configuration -->
+    <sftp:config name="SFTP_Config" doc:name="SFTP Config">
+        <sftp:connection host="${sftp.host}"
+                        port="${sftp.port}"
+                        username="${sftp.username}"
+                        password="${sftp.password}"
+                        workingDir="${sftp.input.directory}">
+            <reconnection>
+                <reconnect frequency="5000" count="${max.retry.attempts}" />
+            </reconnection>
+            <sftp:sftp-client-socket-properties>
+                <sftp:tcp-client-socket-properties
+                    connectionTimeout="30000"
+                    receiveBufferSize="1024000"
+                    sendBufferSize="1024000" />
+            </sftp:sftp-client-socket-properties>
+        </sftp:connection>
+    </sftp:config>
+
+    <!-- HTTP Requester Configuration for Azure Blob Storage -->
+    <http:request-config name="HTTP_Request_Azure"
+                        doc:name="HTTP Request Azure"
+                        basePath="/">
+        <http:request-connection protocol="HTTPS"
+                                host="#[vars.azureStorageHost]"
+                                port="443">
+            <reconnection>
+                <reconnect frequency="5000" count="${max.retry.attempts}" />
+            </reconnection>
+            <tls:context>
+                <tls:trust-store insecure="false" />
+            </tls:context>
+        </http:request-connection>
+        <http:default-headers>
+            <http:default-header key="x-ms-version" value="${azure.storage.api.version}" />
+            <http:default-header key="x-ms-blob-type" value="BlockBlob" />
+        </http:default-headers>
+    </http:request-config>
+
+    <!-- File Configuration (for local temporary storage if needed) -->
+    <file:config name="File_Config" doc:name="File Config">
+        <file:connection workingDir="${mule.home}/temp" />
+    </file:config>
+
+    <!-- Global Configuration Properties -->
+    <configuration defaultErrorHandler-ref="Global_Error_Handler"
+                   doc:name="Configuration"
+                   defaultResponseTimeout="300000" />
+
+</mule>

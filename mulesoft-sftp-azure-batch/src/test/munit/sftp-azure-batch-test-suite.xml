@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
+      xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+      xmlns:java="http://www.mulesoft.org/schema/mule/java"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+        http://www.mulesoft.org/schema/mule/munit-tools http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd
+        http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd">
+
+    <munit:config name="sftp-azure-batch-test-suite.xml" doc:name="MUnit configuration" />
+
+    <!-- Test: SAS Token Generation -->
+    <munit:test name="test-sas-token-generation"
+                description="Test SAS token generation for Azure Blob Storage"
+                doc:name="Test SAS Token Generation">
+
+        <munit:execution>
+            <set-variable value="testfile.csv"
+                         variableName="currentFileName"
+                         doc:name="Set Test File Name" />
+
+            <java:invoke-static doc:name="Generate Test SAS Token"
+                               class="com.example.mulesoft.azure.AzureSASTokenGenerator"
+                               method="generateBlobSASToken(String,String,String,String,String,int)">
+                <java:args><![CDATA[#[{
+                    storageAccountName: "teststorageaccount",
+                    storageAccountKey: "dGVzdGtleQ==",
+                    containerName: "target",
+                    blobName: vars.currentFileName,
+                    permissions: "racwdl",
+                    expiryMinutes: 60
+                }]]]></java:args>
+            </java:invoke-static>
+        </munit:execution>
+
+        <munit:validation>
+            <munit-tools:assert-that
+                expression="#[payload]"
+                is="#[MunitTools::notNullValue()]"
+                doc:name="Assert Token Not Null" />
+
+            <munit-tools:assert-that
+                expression="#[payload contains 'sv=']"
+                is="#[MunitTools::equalTo(true)]"
+                doc:name="Assert Token Contains Version" />
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test: Process Single File Flow -->
+    <munit:test name="test-process-single-file-success"
+                description="Test successful processing of a single file"
+                doc:name="Test Process Single File Success">
+
+        <munit:behavior>
+            <set-variable value="test-file.csv"
+                         variableName="currentFileName"
+                         doc:name="Set File Name" />
+            <set-variable value="/upload/input/test-file.csv"
+                         variableName="currentFilePath"
+                         doc:name="Set File Path" />
+        </munit:behavior>
+
+        <munit:execution>
+            <munit-tools:mock-when processor="sftp:read" doc:name="Mock SFTP Read">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Read File from SFTP" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="id,name,value&#10;1,test,100" />
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+
+            <munit-tools:mock-when processor="java:invoke-static" doc:name="Mock SAS Generation">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Generate SAS Token" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="sv=2021-08-06&amp;sr=b&amp;sp=racwdl&amp;sig=test" />
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+
+            <munit-tools:mock-when processor="http:request" doc:name="Mock Azure Upload">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Upload Blob to Azure" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#['Upload successful']" />
+                    <munit-tools:attributes>
+                        <![CDATA[#[{ statusCode: 201 }]]]>
+                    </munit-tools:attributes>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+
+            <munit-tools:mock-when processor="sftp:move" doc:name="Mock SFTP Move">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="Move to Archive" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#['File moved']" />
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+
+            <flow-ref name="process-single-file-flow" doc:name="Flow-ref to process-single-file-flow" />
+        </munit:execution>
+
+        <munit:validation>
+            <logger level="INFO"
+                   message="Test completed successfully"
+                   doc:name="Log Test Success" />
+        </munit:validation>
+    </munit:test>
+
+</mule>

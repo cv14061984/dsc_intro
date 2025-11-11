@@ -1,0 +1,157 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  MAVEN_OPTS: -Xmx1024m
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up JDK 8
+      uses: actions/setup-java@v3
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Cache Maven packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
+
+    - name: Build with Maven
+      run: |
+        cd mulesoft-sftp-azure-batch
+        mvn clean compile -Denv=dev
+
+    - name: Run MUnit Tests
+      run: |
+        cd mulesoft-sftp-azure-batch
+        mvn test -Denv=dev
+
+    - name: Package Application
+      run: |
+        cd mulesoft-sftp-azure-batch
+        mvn package -DskipTests -Denv=dev
+
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: mule-application
+        path: mulesoft-sftp-azure-batch/target/*.jar
+        retention-days: 7
+
+  deploy-dev:
+    name: Deploy to Development
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up JDK 8
+      uses: actions/setup-java@v3
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Deploy to CloudHub (Dev)
+      env:
+        ANYPOINT_USERNAME: ${{ secrets.ANYPOINT_USERNAME }}
+        ANYPOINT_PASSWORD: ${{ secrets.ANYPOINT_PASSWORD }}
+      run: |
+        cd mulesoft-sftp-azure-batch
+        mvn clean deploy -DmuleDeploy \
+          -Danypoint.username="$ANYPOINT_USERNAME" \
+          -Danypoint.password="$ANYPOINT_PASSWORD" \
+          -Denv=dev \
+          -DapplicationName="sftp-azure-batch-dev" \
+          -Denvironment="Development" \
+          -Dregion="us-east-2" \
+          -DworkerType="MICRO" \
+          -Dworkers="1"
+
+  deploy-qa:
+    name: Deploy to QA
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up JDK 8
+      uses: actions/setup-java@v3
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Deploy to CloudHub (QA)
+      env:
+        ANYPOINT_USERNAME: ${{ secrets.ANYPOINT_USERNAME }}
+        ANYPOINT_PASSWORD: ${{ secrets.ANYPOINT_PASSWORD }}
+      run: |
+        cd mulesoft-sftp-azure-batch
+        mvn clean deploy -DmuleDeploy \
+          -Danypoint.username="$ANYPOINT_USERNAME" \
+          -Danypoint.password="$ANYPOINT_PASSWORD" \
+          -Denv=qa \
+          -DapplicationName="sftp-azure-batch-qa" \
+          -Denvironment="QA" \
+          -Dregion="us-east-2" \
+          -DworkerType="MICRO" \
+          -Dworkers="1"
+
+  deploy-prod:
+    name: Deploy to Production
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://sftp-azure-batch-prod.cloudhub.io
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up JDK 8
+      uses: actions/setup-java@v3
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Deploy to CloudHub (Production)
+      env:
+        ANYPOINT_USERNAME: ${{ secrets.ANYPOINT_USERNAME }}
+        ANYPOINT_PASSWORD: ${{ secrets.ANYPOINT_PASSWORD }}
+      run: |
+        cd mulesoft-sftp-azure-batch
+        mvn clean deploy -DmuleDeploy \
+          -Danypoint.username="$ANYPOINT_USERNAME" \
+          -Danypoint.password="$ANYPOINT_PASSWORD" \
+          -Denv=prod \
+          -DapplicationName="sftp-azure-batch-prod" \
+          -Denvironment="Production" \
+          -Dregion="us-east-2" \
+          -DworkerType="SMALL" \
+          -Dworkers="2"

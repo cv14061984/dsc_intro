@@ -1,0 +1,12 @@
+{
+  "minMuleVersion": "4.4.0",
+  "classLoaderModelLoaderDescriptor": {
+    "id": "mule",
+    "attributes": {
+      "exportedPackages": [
+        "com.example.mulesoft.azure"
+      ],
+      "exportedResources": []
+    }
+  }
+}

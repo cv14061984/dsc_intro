@@ -1,0 +1,277 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:file="http://www.mulesoft.org/schema/mule/file"
+      xmlns:java="http://www.mulesoft.org/schema/mule/java"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:batch="http://www.mulesoft.org/schema/mule/batch"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+        http://www.mulesoft.org/schema/mule/java http://www.mulesoft.org/schema/mule/java/current/mule-java.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd">
+
+    <!-- Import Global Configuration -->
+    <import file="config/global-config.xml" />
+
+    <!-- ============================================== -->
+    <!-- Main Scheduler Flow - Triggers Daily Batch Job -->
+    <!-- ============================================== -->
+    <flow name="scheduler-daily-batch-flow" doc:name="Scheduler Daily Batch Flow">
+        <scheduler doc:name="Daily Scheduler">
+            <scheduling-strategy>
+                <cron expression="${scheduler.cron.expression}" timeZone="${scheduler.time.zone}" />
+            </scheduling-strategy>
+        </scheduler>
+
+        <logger level="INFO"
+               doc:name="Log Batch Start"
+               message="Starting daily batch job for SFTP to Azure transfer at #[now()]" />
+
+        <set-variable value="#[now()]"
+                     doc:name="Set Batch Start Time"
+                     variableName="batchStartTime" />
+
+        <set-variable value="0"
+                     doc:name="Initialize Success Counter"
+                     variableName="successCount" />
+
+        <set-variable value="0"
+                     doc:name="Initialize Error Counter"
+                     variableName="errorCount" />
+
+        <flow-ref doc:name="Process SFTP Files" name="process-sftp-files-flow" />
+
+        <logger level="INFO"
+               doc:name="Log Batch Complete"
+               message="Batch job completed. Success: #[vars.successCount], Errors: #[vars.errorCount], Duration: #[now() - vars.batchStartTime]" />
+
+        <error-handler>
+            <on-error-propagate enableNotifications="true"
+                               logException="true"
+                               doc:name="On Error Propagate"
+                               type="ANY">
+                <logger level="ERROR"
+                       doc:name="Log Scheduler Error"
+                       message="Scheduler batch job failed: #[error.description]" />
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+
+    <!-- ============================================== -->
+    <!-- Process SFTP Files Flow -->
+    <!-- ============================================== -->
+    <flow name="process-sftp-files-flow" doc:name="Process SFTP Files Flow">
+        <sftp:list doc:name="List CSV Files"
+                  config-ref="SFTP_Config"
+                  directoryPath="${sftp.input.directory}">
+            <sftp:matcher filenamePattern="${file.pattern}" />
+        </sftp:list>
+
+        <logger level="INFO"
+               doc:name="Log Files Found"
+               message="Found #[sizeOf(payload)] CSV files to process" />
+
+        <choice doc:name="Check if Files Exist">
+            <when expression="#[sizeOf(payload) &gt; 0]">
+                <foreach doc:name="For Each File" collection="#[payload]">
+                    <logger level="INFO"
+                           doc:name="Log Current File"
+                           message="Processing file: #[payload.attributes.fileName]" />
+
+                    <flow-ref doc:name="Process Single File" name="process-single-file-flow" />
+                </foreach>
+            </when>
+            <otherwise>
+                <logger level="INFO"
+                       doc:name="Log No Files"
+                       message="No CSV files found in SFTP input directory" />
+            </otherwise>
+        </choice>
+    </flow>
+
+    <!-- ============================================== -->
+    <!-- Process Single File Flow -->
+    <!-- ============================================== -->
+    <flow name="process-single-file-flow" doc:name="Process Single File Flow">
+        <set-variable value="#[payload.attributes.fileName]"
+                     doc:name="Store File Name"
+                     variableName="currentFileName" />
+
+        <set-variable value="#[payload.attributes.path]"
+                     doc:name="Store File Path"
+                     variableName="currentFilePath" />
+
+        <try doc:name="Try File Processing">
+            <!-- Read file from SFTP -->
+            <sftp:read doc:name="Read File from SFTP"
+                      config-ref="SFTP_Config"
+                      path="#[vars.currentFilePath]"
+                      lock="true" />
+
+            <set-variable value="#[payload]"
+                         doc:name="Store File Content"
+                         variableName="fileContent" />
+
+            <logger level="INFO"
+                   doc:name="Log File Read"
+                   message="Successfully read file: #[vars.currentFileName], Size: #[sizeOf(payload)] bytes" />
+
+            <!-- Generate SAS Token -->
+            <flow-ref doc:name="Generate SAS Token" name="generate-sas-token-flow" />
+
+            <!-- Upload to Azure Blob Storage -->
+            <flow-ref doc:name="Upload to Azure" name="upload-to-azure-blob-flow" />
+
+            <!-- Move file to archive directory -->
+            <sftp:move doc:name="Move to Archive"
+                      config-ref="SFTP_Config"
+                      sourcePath="#[vars.currentFilePath]"
+                      targetPath="#['${sftp.archive.directory}/' ++ vars.currentFileName]"
+                      overwrite="true" />
+
+            <logger level="INFO"
+                   doc:name="Log Success"
+                   message="Successfully processed and archived file: #[vars.currentFileName]" />
+
+            <set-variable value="#[vars.successCount + 1]"
+                         doc:name="Increment Success Counter"
+                         variableName="successCount" />
+
+            <error-handler>
+                <on-error-continue enableNotifications="true"
+                                  logException="true"
+                                  doc:name="On Error Continue"
+                                  type="ANY">
+                    <logger level="ERROR"
+                           doc:name="Log File Processing Error"
+                           message="Failed to process file: #[vars.currentFileName], Error: #[error.description]" />
+
+                    <!-- Move file to error directory -->
+                    <sftp:move doc:name="Move to Error Directory"
+                              config-ref="SFTP_Config"
+                              sourcePath="#[vars.currentFilePath]"
+                              targetPath="#['${sftp.error.directory}/' ++ vars.currentFileName ++ '.error']"
+                              overwrite="true" />
+
+                    <set-variable value="#[vars.errorCount + 1]"
+                                 doc:name="Increment Error Counter"
+                                 variableName="errorCount" />
+                </on-error-continue>
+            </error-handler>
+        </try>
+    </flow>
+
+    <!-- ============================================== -->
+    <!-- Generate SAS Token Flow -->
+    <!-- ============================================== -->
+    <flow name="generate-sas-token-flow" doc:name="Generate SAS Token Flow">
+        <logger level="DEBUG"
+               doc:name="Log Token Generation Start"
+               message="Generating SAS token for file: #[vars.currentFileName]" />
+
+        <!-- Invoke Java class to generate SAS token -->
+        <java:invoke-static doc:name="Generate SAS Token"
+                           class="com.example.mulesoft.azure.AzureSASTokenGenerator"
+                           method="generateBlobSASToken(String,String,String,String,String,int)">
+            <java:args><![CDATA[#[{
+                storageAccountName: p('azure.storage.account.name'),
+                storageAccountKey: p('azure.storage.account.key'),
+                containerName: p('azure.storage.container.name'),
+                blobName: vars.currentFileName,
+                permissions: p('azure.sas.permissions'),
+                expiryMinutes: p('azure.sas.token.expiry.minutes') as Number
+            }]]]></java:args>
+        </java:invoke-static>
+
+        <set-variable value="#[payload]"
+                     doc:name="Store SAS Token"
+                     variableName="sasToken" />
+
+        <logger level="DEBUG"
+               doc:name="Log Token Generated"
+               message="SAS token generated successfully for file: #[vars.currentFileName]" />
+
+        <set-payload value="#[vars.fileContent]"
+                    doc:name="Restore File Content" />
+    </flow>
+
+    <!-- ============================================== -->
+    <!-- Upload to Azure Blob Storage Flow -->
+    <!-- ============================================== -->
+    <flow name="upload-to-azure-blob-flow" doc:name="Upload to Azure Blob Storage Flow">
+        <logger level="INFO"
+               doc:name="Log Upload Start"
+               message="Starting upload to Azure Blob Storage: #[vars.currentFileName]" />
+
+        <set-variable value="#[p('azure.storage.account.name') ++ '.blob.core.windows.net']"
+                     doc:name="Set Azure Storage Host"
+                     variableName="azureStorageHost" />
+
+        <set-variable value="#['/' ++ p('azure.storage.container.name') ++ '/' ++ vars.currentFileName ++ '?' ++ vars.sasToken]"
+                     doc:name="Set Blob Path with SAS"
+                     variableName="blobPath" />
+
+        <http:request method="PUT"
+                     doc:name="Upload Blob to Azure"
+                     config-ref="HTTP_Request_Azure"
+                     path="#[vars.blobPath]"
+                     responseTimeout="300000">
+            <http:headers><![CDATA[#[output application/java
+---
+{
+    "Content-Type" : "text/csv",
+    "x-ms-blob-type" : "BlockBlob",
+    "x-ms-version" : p('azure.storage.api.version')
+}]]]></http:headers>
+        </http:request>
+
+        <logger level="INFO"
+               doc:name="Log Upload Success"
+               message="Successfully uploaded file to Azure: #[vars.currentFileName], Status: #[attributes.statusCode]" />
+
+        <error-handler>
+            <on-error-propagate enableNotifications="true"
+                               logException="true"
+                               doc:name="On Error Propagate"
+                               type="HTTP:BAD_REQUEST, HTTP:UNAUTHORIZED, HTTP:FORBIDDEN, HTTP:NOT_FOUND, HTTP:INTERNAL_SERVER_ERROR">
+                <logger level="ERROR"
+                       doc:name="Log Upload Error"
+                       message="Azure upload failed for file: #[vars.currentFileName], Status: #[error.errorMessage]" />
+            </on-error-propagate>
+        </error-handler>
+    </flow>
+
+    <!-- ============================================== -->
+    <!-- Manual Trigger Flow (for testing) -->
+    <!-- ============================================== -->
+    <flow name="manual-trigger-flow" doc:name="Manual Trigger Flow">
+        <http:listener doc:name="HTTP Listener"
+                      config-ref="HTTP_Listener_Config"
+                      path="/trigger-batch"
+                      allowedMethods="POST">
+            <http:response statusCode="202">
+                <http:body><![CDATA[#[output application/json --- { message: "Batch job triggered successfully", timestamp: now() }]]]></http:body>
+            </http:response>
+        </http:listener>
+
+        <logger level="INFO"
+               doc:name="Log Manual Trigger"
+               message="Batch job manually triggered" />
+
+        <async doc:name="Async Processing">
+            <flow-ref doc:name="Process SFTP Files" name="process-sftp-files-flow" />
+        </async>
+    </flow>
+
+    <!-- HTTP Listener Configuration for Manual Trigger -->
+    <http:listener-config name="HTTP_Listener_Config" doc:name="HTTP Listener Config">
+        <http:listener-connection host="0.0.0.0" port="8081" />
+    </http:listener-config>
+
+</mule>
