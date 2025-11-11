@@ -1,0 +1,60 @@
+{
+  "totalCount": 2,
+  "returnedCount": 2,
+  "offset": 0,
+  "limit": 100,
+  "data": [
+    {
+      "legalEntityId": "LE001234",
+      "legalEntityName": "Acme Corporation Ltd",
+      "legalEntityType": "Corporation",
+      "country": "US",
+      "countryName": "United States",
+      "address": {
+        "addressLine1": "123 Main Street",
+        "addressLine2": "Suite 100",
+        "city": "New York",
+        "state": "NY",
+        "postalCode": "10001",
+        "country": "US"
+      },
+      "registrationNumber": "12-3456789",
+      "taxId": "98-7654321",
+      "status": "APPROVED",
+      "effectiveDate": "2025-01-01",
+      "expiryDate": "2026-12-31",
+      "createdBy": "system.user",
+      "createdDate": "2025-01-01T00:00:00Z",
+      "lastModifiedBy": "admin.user",
+      "lastModifiedDate": "2025-11-11T10:30:00Z",
+      "parentEntity": null
+    },
+    {
+      "legalEntityId": "LE001235",
+      "legalEntityName": "Global Finance LLC",
+      "legalEntityType": "LLC",
+      "country": "GB",
+      "countryName": "United Kingdom",
+      "address": {
+        "addressLine1": "456 High Street",
+        "addressLine2": null,
+        "city": "London",
+        "state": null,
+        "postalCode": "SW1A 1AA",
+        "country": "GB"
+      },
+      "registrationNumber": "GB123456789",
+      "taxId": "GB987654321",
+      "status": "APPROVED",
+      "effectiveDate": "2024-06-15",
+      "expiryDate": "2027-06-15",
+      "createdBy": "system.user",
+      "createdDate": "2024-06-15T00:00:00Z",
+      "lastModifiedBy": "system.user",
+      "lastModifiedDate": "2024-06-15T00:00:00Z",
+      "parentEntity": "LE001234"
+    }
+  ],
+  "correlationId": "550e8400-e29b-41d4-a716-446655440000",
+  "timestamp": "2025-11-11T10:30:00Z"
+}

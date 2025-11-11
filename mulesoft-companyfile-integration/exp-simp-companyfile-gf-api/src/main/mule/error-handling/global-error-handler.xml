@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <!-- Global Error Handler -->
+    <error-handler name="Global_Error_Handler">
+
+        <!-- Bad Request Errors -->
+        <on-error-propagate type="APIKIT:BAD_REQUEST">
+            <ee:transform doc:name="Transform to Error Response">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status: "400",
+    error: "Bad Request",
+    message: error.description default "Invalid request parameters",
+    timestamp: now() as String { format: "yyyy-MM-dd'T'HH:mm:ss'Z'" },
+    correlationId: correlationId
+}]]></ee:set-payload>
+                </ee:message>
+                <ee:variables>
+                    <ee:set-variable variableName="httpStatus">400</ee:set-variable>
+                </ee:variables>
+            </ee:transform>
+            <logger level="WARN"
+                    message="Bad Request Error - CorrelationId: #[correlationId] - Message: #[error.description]"
+                    category="${api.name}" />
+            <set-variable variableName="httpStatus" value="400" />
+        </on-error-propagate>
+
+        <!-- Not Found Errors -->
+        <on-error-propagate type="APIKIT:NOT_FOUND">
+            <ee:transform doc:name="Transform to Error Response">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status: "404",
+    error: "Not Found",
+    message: "Resource not found",
+    timestamp: now() as String { format: "yyyy-MM-dd'T'HH:mm:ss'Z'" },
+    correlationId: correlationId
+}]]></ee:set-payload>
+                </ee:message>
+            </ee:transform>
+            <logger level="WARN"
+                    message="Not Found Error - CorrelationId: #[correlationId]"
+                    category="${api.name}" />
+            <set-variable variableName="httpStatus" value="404" />
+        </on-error-propagate>
+
+        <!-- Method Not Allowed -->
+        <on-error-propagate type="APIKIT:METHOD_NOT_ALLOWED">
+            <ee:transform doc:name="Transform to Error Response">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status: "405",
+    error: "Method Not Allowed",
+    message: "HTTP method not allowed for this resource",
+    timestamp: now() as String { format: "yyyy-MM-dd'T'HH:mm:ss'Z'" },
+    correlationId: correlationId
+}]]></ee:set-payload>
+                </ee:message>
+            </ee:transform>
+            <logger level="WARN"
+                    message="Method Not Allowed - CorrelationId: #[correlationId]"
+                    category="${api.name}" />
+            <set-variable variableName="httpStatus" value="405" />
+        </on-error-propagate>
+
+        <!-- Timeout Errors -->
+        <on-error-propagate type="HTTP:TIMEOUT">
+            <ee:transform doc:name="Transform to Error Response">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status: "504",
+    error: "Gateway Timeout",
+    message: "Request timeout while communicating with downstream service",
+    timestamp: now() as String { format: "yyyy-MM-dd'T'HH:mm:ss'Z'" },
+    correlationId: correlationId
+}]]></ee:set-payload>
+                </ee:message>
+            </ee:transform>
+            <logger level="ERROR"
+                    message="Timeout Error - CorrelationId: #[correlationId] - Error: #[error.description]"
+                    category="${api.name}" />
+            <set-variable variableName="httpStatus" value="504" />
+        </on-error-propagate>
+
+        <!-- Connectivity Errors -->
+        <on-error-propagate type="HTTP:CONNECTIVITY">
+            <ee:transform doc:name="Transform to Error Response">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status: "503",
+    error: "Service Unavailable",
+    message: "Unable to connect to downstream service",
+    timestamp: now() as String { format: "yyyy-MM-dd'T'HH:mm:ss'Z'" },
+    correlationId: correlationId
+}]]></ee:set-payload>
+                </ee:message>
+            </ee:transform>
+            <logger level="ERROR"
+                    message="Connectivity Error - CorrelationId: #[correlationId] - Error: #[error.description]"
+                    category="${api.name}" />
+            <set-variable variableName="httpStatus" value="503" />
+        </on-error-propagate>
+
+        <!-- Client Error Responses (4xx from downstream) -->
+        <on-error-propagate type="HTTP:BAD_REQUEST, HTTP:UNAUTHORIZED, HTTP:FORBIDDEN, HTTP:NOT_FOUND">
+            <ee:transform doc:name="Transform to Error Response">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status: error.errorType.identifier,
+    error: "Client Error",
+    message: error.description default "Error in downstream service request",
+    timestamp: now() as String { format: "yyyy-MM-dd'T'HH:mm:ss'Z'" },
+    correlationId: correlationId
+}]]></ee:set-payload>
+                </ee:message>
+            </ee:transform>
+            <logger level="ERROR"
+                    message="Client Error - CorrelationId: #[correlationId] - Error: #[error.description]"
+                    category="${api.name}" />
+        </on-error-propagate>
+
+        <!-- Server Error Responses (5xx from downstream) -->
+        <on-error-propagate type="HTTP:INTERNAL_SERVER_ERROR, HTTP:SERVICE_UNAVAILABLE">
+            <ee:transform doc:name="Transform to Error Response">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status: "502",
+    error: "Bad Gateway",
+    message: "Error received from downstream service",
+    timestamp: now() as String { format: "yyyy-MM-dd'T'HH:mm:ss'Z'" },
+    correlationId: correlationId
+}]]></ee:set-payload>
+                </ee:message>
+            </ee:transform>
+            <logger level="ERROR"
+                    message="Downstream Server Error - CorrelationId: #[correlationId] - Error: #[error.description]"
+                    category="${api.name}" />
+            <set-variable variableName="httpStatus" value="502" />
+        </on-error-propagate>
+
+        <!-- Generic Error Handler -->
+        <on-error-propagate type="ANY">
+            <ee:transform doc:name="Transform to Error Response">
+                <ee:message>
+                    <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status: "500",
+    error: "Internal Server Error",
+    message: "An unexpected error occurred while processing your request",
+    timestamp: now() as String { format: "yyyy-MM-dd'T'HH:mm:ss'Z'" },
+    correlationId: correlationId
+}]]></ee:set-payload>
+                </ee:message>
+            </ee:transform>
+            <logger level="ERROR"
+                    message="Unexpected Error - CorrelationId: #[correlationId] - Error Type: #[error.errorType] - Message: #[error.description]"
+                    category="${api.name}" />
+            <set-variable variableName="httpStatus" value="500" />
+        </on-error-propagate>
+
+    </error-handler>
+
+</mule>

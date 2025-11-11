@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <!-- Get Legal Entities Flow -->
+    <flow name="get:\legalentities:experience-api-config">
+        <logger
+            level="INFO"
+            message="Processing GET /legalentities - CorrelationId: #[vars.correlationId]"
+            doc:name="Log Request"
+            category="${api.name}" />
+
+        <!-- Store query parameters -->
+        <set-variable
+            variableName="queryParams"
+            value="#[attributes.queryParams]"
+            doc:name="Store Query Params" />
+
+        <!-- Validate Query Parameters -->
+        <choice doc:name="Validate Parameters">
+            <when expression="#[vars.queryParams.limit != null and (vars.queryParams.limit as Number &lt; 1 or vars.queryParams.limit as Number &gt; 1000)]">
+                <raise-error type="VALIDATION:INVALID_PARAMETER" description="Limit must be between 1 and 1000" />
+            </when>
+            <when expression="#[vars.queryParams.offset != null and vars.queryParams.offset as Number &lt; 0]">
+                <raise-error type="VALIDATION:INVALID_PARAMETER" description="Offset must be greater than or equal to 0" />
+            </when>
+        </choice>
+
+        <!-- Prepare request to Process API -->
+        <ee:transform doc:name="Prepare Process API Request">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    legalEntityId: vars.queryParams.legalEntityId,
+    legalEntityName: vars.queryParams.legalEntityName,
+    country: vars.queryParams.country,
+    status: vars.queryParams.status default "APPROVED",
+    limit: vars.queryParams.limit default 100,
+    offset: vars.queryParams.offset default 0
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <!-- Call Process API -->
+        <http:request
+            method="GET"
+            config-ref="Process_API_HTTP_Request_Config"
+            path="/magma/companyfile/v1/legalentities"
+            doc:name="Call Process API">
+            <http:headers><![CDATA[#[output application/java
+---
+{
+    "client_id": p('secure::process.api.client.id'),
+    "client_secret": p('secure::process.api.client.secret'),
+    "X-Correlation-Id": vars.correlationId
+}]]]></http:headers>
+            <http:query-params><![CDATA[#[output application/java
+---
+{
+    legalEntityId: vars.queryParams.legalEntityId,
+    legalEntityName: vars.queryParams.legalEntityName,
+    country: vars.queryParams.country,
+    status: vars.queryParams.status default "APPROVED",
+    limit: vars.queryParams.limit default 100,
+    offset: vars.queryParams.offset default 0
+}]]]></http:query-params>
+        </http:request>
+
+        <!-- Transform Response -->
+        <ee:transform doc:name="Transform Response">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <logger
+            level="INFO"
+            message="Successfully processed GET /legalentities - CorrelationId: #[vars.correlationId] - Returned Count: #[payload.returnedCount]"
+            doc:name="Log Success"
+            category="${api.name}" />
+
+        <error-handler ref="Global_Error_Handler" />
+    </flow>
+
+    <!-- Get Legal Entity by ID Flow -->
+    <flow name="get:\legalentities\(legalEntityId):experience-api-config">
+        <logger
+            level="INFO"
+            message="Processing GET /legalentities/#[attributes.uriParams.legalEntityId] - CorrelationId: #[vars.correlationId]"
+            doc:name="Log Request"
+            category="${api.name}" />
+
+        <!-- Store URI parameter -->
+        <set-variable
+            variableName="legalEntityId"
+            value="#[attributes.uriParams.legalEntityId]"
+            doc:name="Store Legal Entity ID" />
+
+        <!-- Validate Legal Entity ID -->
+        <choice doc:name="Validate Legal Entity ID">
+            <when expression="#[isEmpty(vars.legalEntityId)]">
+                <raise-error type="VALIDATION:INVALID_PARAMETER" description="Legal Entity ID is required" />
+            </when>
+        </choice>
+
+        <!-- Call Process API -->
+        <http:request
+            method="GET"
+            config-ref="Process_API_HTTP_Request_Config"
+            path="#['/magma/companyfile/v1/legalentities/' ++ vars.legalEntityId]"
+            doc:name="Call Process API">
+            <http:headers><![CDATA[#[output application/java
+---
+{
+    "client_id": p('secure::process.api.client.id'),
+    "client_secret": p('secure::process.api.client.secret'),
+    "X-Correlation-Id": vars.correlationId
+}]]]></http:headers>
+        </http:request>
+
+        <!-- Transform Response -->
+        <ee:transform doc:name="Transform Response">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <logger
+            level="INFO"
+            message="Successfully processed GET /legalentities/#[vars.legalEntityId] - CorrelationId: #[vars.correlationId]"
+            doc:name="Log Success"
+            category="${api.name}" />
+
+        <error-handler ref="Global_Error_Handler" />
+    </flow>
+
+    <!-- Health Check Flow -->
+    <flow name="get:\health:experience-api-config">
+        <logger
+            level="INFO"
+            message="Health check requested - CorrelationId: #[vars.correlationId]"
+            doc:name="Log Request"
+            category="${api.name}" />
+
+        <ee:transform doc:name="Health Response">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status: "UP",
+    apiName: p('api.name'),
+    version: p('api.version'),
+    timestamp: now() as String { format: "yyyy-MM-dd'T'HH:mm:ss'Z'" }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <error-handler ref="Global_Error_Handler" />
+    </flow>
+
+</mule>

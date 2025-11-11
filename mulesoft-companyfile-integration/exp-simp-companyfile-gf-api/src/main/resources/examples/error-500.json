@@ -1,0 +1,7 @@
+{
+  "status": "500",
+  "error": "Internal Server Error",
+  "message": "An unexpected error occurred while processing your request",
+  "timestamp": "2025-11-11T10:30:00Z",
+  "correlationId": "550e8400-e29b-41d4-a716-446655440000"
+}

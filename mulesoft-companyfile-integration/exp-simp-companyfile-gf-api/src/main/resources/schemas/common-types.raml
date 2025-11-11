@@ -1,0 +1,183 @@
+#%RAML 1.0 Library
+
+types:
+  ErrorResponse:
+    type: object
+    properties:
+      status:
+        type: string
+        description: HTTP status code
+        example: "400"
+      error:
+        type: string
+        description: Error type
+        example: "Bad Request"
+      message:
+        type: string
+        description: Error message
+        example: "Invalid request parameters"
+      timestamp:
+        type: datetime
+        description: Timestamp of the error
+        example: "2025-11-11T10:30:00Z"
+      correlationId:
+        type: string
+        description: Unique correlation ID for tracking
+        example: "550e8400-e29b-41d4-a716-446655440000"
+
+  LegalEntity:
+    type: object
+    properties:
+      legalEntityId:
+        type: string
+        required: true
+        description: Unique Legal Entity identifier
+        example: "LE001234"
+      legalEntityName:
+        type: string
+        required: true
+        description: Legal Entity name
+        example: "Acme Corporation Ltd"
+      legalEntityType:
+        type: string
+        required: false
+        description: Type of legal entity
+        example: "Corporation"
+      country:
+        type: string
+        required: true
+        description: Country code (ISO 3166-1 alpha-2)
+        example: "US"
+      countryName:
+        type: string
+        required: false
+        description: Full country name
+        example: "United States"
+      address:
+        type: Address
+        required: false
+      registrationNumber:
+        type: string
+        required: false
+        description: Business registration number
+        example: "12-3456789"
+      taxId:
+        type: string
+        required: false
+        description: Tax identification number
+        example: "12-3456789"
+      status:
+        type: string
+        required: true
+        description: Legal Entity status
+        enum: [APPROVED, PENDING, REJECTED]
+        example: "APPROVED"
+      effectiveDate:
+        type: date-only
+        required: false
+        description: Effective date
+        example: "2025-01-01"
+      expiryDate:
+        type: date-only
+        required: false
+        description: Expiry date
+        example: "2026-12-31"
+      createdBy:
+        type: string
+        required: false
+        description: User who created the record
+        example: "system.user"
+      createdDate:
+        type: datetime
+        required: false
+        description: Creation timestamp
+        example: "2025-01-01T00:00:00Z"
+      lastModifiedBy:
+        type: string
+        required: false
+        description: User who last modified the record
+        example: "system.user"
+      lastModifiedDate:
+        type: datetime
+        required: false
+        description: Last modification timestamp
+        example: "2025-11-11T10:30:00Z"
+      parentEntity:
+        type: string
+        required: false
+        description: Parent legal entity ID if applicable
+        example: "LE001000"
+
+  Address:
+    type: object
+    properties:
+      addressLine1:
+        type: string
+        required: false
+        example: "123 Main Street"
+      addressLine2:
+        type: string
+        required: false
+        example: "Suite 100"
+      city:
+        type: string
+        required: false
+        example: "New York"
+      state:
+        type: string
+        required: false
+        example: "NY"
+      postalCode:
+        type: string
+        required: false
+        example: "10001"
+      country:
+        type: string
+        required: false
+        example: "US"
+
+  LegalEntitiesResponse:
+    type: object
+    properties:
+      totalCount:
+        type: integer
+        description: Total number of records matching criteria
+        example: 150
+      returnedCount:
+        type: integer
+        description: Number of records in this response
+        example: 100
+      offset:
+        type: integer
+        description: Offset used for pagination
+        example: 0
+      limit:
+        type: integer
+        description: Limit used for pagination
+        example: 100
+      data:
+        type: LegalEntity[]
+        description: Array of legal entities
+      correlationId:
+        type: string
+        description: Unique correlation ID for tracking
+        example: "550e8400-e29b-41d4-a716-446655440000"
+      timestamp:
+        type: datetime
+        description: Response timestamp
+        example: "2025-11-11T10:30:00Z"
+
+  LegalEntityResponse:
+    type: object
+    properties:
+      data:
+        type: LegalEntity
+        description: Legal entity details
+      correlationId:
+        type: string
+        description: Unique correlation ID for tracking
+        example: "550e8400-e29b-41d4-a716-446655440000"
+      timestamp:
+        type: datetime
+        description: Response timestamp
+        example: "2025-11-11T10:30:00Z"

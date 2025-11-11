@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <!-- Get Legal Entities Flow - Orchestration Layer -->
+    <flow name="get:\legalentities:process-api-config">
+        <logger
+            level="INFO"
+            message="Orchestrating GET /legalentities - CorrelationId: #[vars.correlationId]"
+            doc:name="Log Request"
+            category="${api.name}" />
+
+        <!-- Store query parameters -->
+        <set-variable
+            variableName="queryParams"
+            value="#[attributes.queryParams]"
+            doc:name="Store Query Params" />
+
+        <!-- Validate and Set Defaults -->
+        <ee:transform doc:name="Validate and Set Defaults">
+            <ee:message>
+            </ee:message>
+            <ee:variables>
+                <ee:set-variable variableName="validatedParams"><![CDATA[%dw 2.0
+output application/json
+---
+{
+    legalEntityId: vars.queryParams.legalEntityId,
+    legalEntityName: vars.queryParams.legalEntityName,
+    country: vars.queryParams.country,
+    status: vars.queryParams.status default "APPROVED",
+    limit: vars.queryParams.limit default 100,
+    offset: vars.queryParams.offset default 0
+}]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <!-- Call System API to retrieve data from MDM -->
+        <flow-ref name="call-system-api-get-legal-entities" doc:name="Call System API" />
+
+        <!-- Store System API Response -->
+        <set-variable
+            variableName="systemApiResponse"
+            value="#[payload]"
+            doc:name="Store System API Response" />
+
+        <!-- Orchestration Logic: Transform and Enrich Data -->
+        <ee:transform doc:name="Transform and Enrich Data">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    totalCount: vars.systemApiResponse.totalCount,
+    returnedCount: vars.systemApiResponse.returnedCount,
+    offset: vars.systemApiResponse.offset,
+    limit: vars.systemApiResponse.limit,
+    data: vars.systemApiResponse.data map (entity, index) -> {
+        legalEntityId: entity.legalEntityId,
+        legalEntityName: entity.legalEntityName,
+        legalEntityType: entity.legalEntityType,
+        country: entity.country,
+        countryName: entity.countryName,
+        address: entity.address,
+        registrationNumber: entity.registrationNumber,
+        taxId: entity.taxId,
+        status: entity.status,
+        effectiveDate: entity.effectiveDate,
+        expiryDate: entity.expiryDate,
+        createdBy: entity.createdBy,
+        createdDate: entity.createdDate,
+        lastModifiedBy: entity.lastModifiedBy,
+        lastModifiedDate: entity.lastModifiedDate,
+        parentEntity: entity.parentEntity,
+        // Enrichment: Add calculated fields
+        isActive: entity.status == "APPROVED" and (
+            entity.expiryDate == null or
+            entity.expiryDate as Date >= now() as Date
+        ),
+        daysUntilExpiry: if (entity.expiryDate != null)
+            ((entity.expiryDate as Date) - (now() as Date)) as Number {unit: "days"}
+            else null
+    },
+    correlationId: vars.correlationId,
+    timestamp: now() as String { format: "yyyy-MM-dd'T'HH:mm:ss'Z'" }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <!-- Apply Business Rules (Filter if needed) -->
+        <choice doc:name="Apply Business Rules">
+            <when expression="#[payload.returnedCount == 0]">
+                <logger
+                    level="WARN"
+                    message="No legal entities found - CorrelationId: #[vars.correlationId]"
+                    category="${api.name}" />
+            </when>
+            <otherwise>
+                <logger
+                    level="INFO"
+                    message="Successfully orchestrated #[payload.returnedCount] legal entities - CorrelationId: #[vars.correlationId]"
+                    category="${api.name}" />
+            </otherwise>
+        </choice>
+
+        <error-handler ref="Global_Error_Handler" />
+    </flow>
+
+    <!-- Get Legal Entity by ID Flow - Orchestration Layer -->
+    <flow name="get:\legalentities\(legalEntityId):process-api-config">
+        <logger
+            level="INFO"
+            message="Orchestrating GET /legalentities/#[attributes.uriParams.legalEntityId] - CorrelationId: #[vars.correlationId]"
+            doc:name="Log Request"
+            category="${api.name}" />
+
+        <!-- Store URI parameter -->
+        <set-variable
+            variableName="legalEntityId"
+            value="#[attributes.uriParams.legalEntityId]"
+            doc:name="Store Legal Entity ID" />
+
+        <!-- Call System API -->
+        <flow-ref name="call-system-api-get-legal-entity-by-id" doc:name="Call System API" />
+
+        <!-- Store System API Response -->
+        <set-variable
+            variableName="systemApiResponse"
+            value="#[payload]"
+            doc:name="Store System API Response" />
+
+        <!-- Transform and Enrich Data -->
+        <ee:transform doc:name="Transform and Enrich Data">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    data: {
+        legalEntityId: vars.systemApiResponse.data.legalEntityId,
+        legalEntityName: vars.systemApiResponse.data.legalEntityName,
+        legalEntityType: vars.systemApiResponse.data.legalEntityType,
+        country: vars.systemApiResponse.data.country,
+        countryName: vars.systemApiResponse.data.countryName,
+        address: vars.systemApiResponse.data.address,
+        registrationNumber: vars.systemApiResponse.data.registrationNumber,
+        taxId: vars.systemApiResponse.data.taxId,
+        status: vars.systemApiResponse.data.status,
+        effectiveDate: vars.systemApiResponse.data.effectiveDate,
+        expiryDate: vars.systemApiResponse.data.expiryDate,
+        createdBy: vars.systemApiResponse.data.createdBy,
+        createdDate: vars.systemApiResponse.data.createdDate,
+        lastModifiedBy: vars.systemApiResponse.data.lastModifiedBy,
+        lastModifiedDate: vars.systemApiResponse.data.lastModifiedDate,
+        parentEntity: vars.systemApiResponse.data.parentEntity,
+        // Enrichment: Add calculated fields
+        isActive: vars.systemApiResponse.data.status == "APPROVED" and (
+            vars.systemApiResponse.data.expiryDate == null or
+            vars.systemApiResponse.data.expiryDate as Date >= now() as Date
+        ),
+        daysUntilExpiry: if (vars.systemApiResponse.data.expiryDate != null)
+            ((vars.systemApiResponse.data.expiryDate as Date) - (now() as Date)) as Number {unit: "days"}
+            else null
+    },
+    correlationId: vars.correlationId,
+    timestamp: now() as String { format: "yyyy-MM-dd'T'HH:mm:ss'Z'" }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <logger
+            level="INFO"
+            message="Successfully orchestrated legal entity #[vars.legalEntityId] - CorrelationId: #[vars.correlationId]"
+            category="${api.name}" />
+
+        <error-handler ref="Global_Error_Handler" />
+    </flow>
+
+    <!-- Health Check Flow -->
+    <flow name="get:\health:process-api-config">
+        <logger
+            level="INFO"
+            message="Health check requested - CorrelationId: #[vars.correlationId]"
+            doc:name="Log Request"
+            category="${api.name}" />
+
+        <!-- Check System API Health -->
+        <try doc:name="Try System API Health Check">
+            <http:request
+                method="GET"
+                config-ref="System_API_HTTP_Request_Config"
+                path="/grmdm/companyfile/v1/health"
+                doc:name="System API Health Check"
+                target="systemApiHealth"
+                targetValue="#[payload.status]" />
+
+            <error-handler>
+                <on-error-continue>
+                    <set-variable variableName="systemApiHealth" value="DOWN" />
+                </on-error-continue>
+            </error-handler>
+        </try>
+
+        <ee:transform doc:name="Health Response">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status: if (vars.systemApiHealth == "UP") "UP" else "DEGRADED",
+    apiName: p('api.name'),
+    version: p('api.version'),
+    timestamp: now() as String { format: "yyyy-MM-dd'T'HH:mm:ss'Z'" },
+    dependencies: {
+        systemApi: vars.systemApiHealth default "UNKNOWN"
+    }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <error-handler ref="Global_Error_Handler" />
+    </flow>
+
+    <!-- Sub-flow: Call System API - Get Legal Entities -->
+    <sub-flow name="call-system-api-get-legal-entities">
+        <logger
+            level="DEBUG"
+            message="Calling System API GET /legalentities - CorrelationId: #[vars.correlationId]"
+            category="${api.name}" />
+
+        <http:request
+            method="GET"
+            config-ref="System_API_HTTP_Request_Config"
+            path="/grmdm/companyfile/v1/legalentities"
+            doc:name="System API Request">
+            <http:headers><![CDATA[#[output application/java
+---
+{
+    "client_id": p('secure::system.api.client.id'),
+    "client_secret": p('secure::system.api.client.secret'),
+    "X-Correlation-Id": vars.correlationId
+}]]]></http:headers>
+            <http:query-params><![CDATA[#[output application/java
+---
+vars.validatedParams]]]></http:query-params>
+        </http:request>
+
+        <logger
+            level="DEBUG"
+            message="System API response received - CorrelationId: #[vars.correlationId]"
+            category="${api.name}" />
+    </sub-flow>
+
+    <!-- Sub-flow: Call System API - Get Legal Entity by ID -->
+    <sub-flow name="call-system-api-get-legal-entity-by-id">
+        <logger
+            level="DEBUG"
+            message="Calling System API GET /legalentities/#[vars.legalEntityId] - CorrelationId: #[vars.correlationId]"
+            category="${api.name}" />
+
+        <http:request
+            method="GET"
+            config-ref="System_API_HTTP_Request_Config"
+            path="#['/grmdm/companyfile/v1/legalentities/' ++ vars.legalEntityId]"
+            doc:name="System API Request">
+            <http:headers><![CDATA[#[output application/java
+---
+{
+    "client_id": p('secure::system.api.client.id'),
+    "client_secret": p('secure::system.api.client.secret'),
+    "X-Correlation-Id": vars.correlationId
+}]]]></http:headers>
+        </http:request>
+
+        <logger
+            level="DEBUG"
+            message="System API response received - CorrelationId: #[vars.correlationId]"
+            category="${api.name}" />
+    </sub-flow>
+
+</mule>

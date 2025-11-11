@@ -1,0 +1,7 @@
+{
+  "status": "403",
+  "error": "Forbidden",
+  "message": "Client does not have permission to access this resource",
+  "timestamp": "2025-11-11T10:30:00Z",
+  "correlationId": "550e8400-e29b-41d4-a716-446655440000"
+}

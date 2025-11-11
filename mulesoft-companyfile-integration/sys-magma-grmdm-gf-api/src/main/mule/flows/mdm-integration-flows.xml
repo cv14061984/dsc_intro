@@ -1,0 +1,559 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:db="http://www.mulesoft.org/schema/mule/db"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+
+    <!-- Get Legal Entities from MDM -->
+    <flow name="get:\legalentities:system-api-config">
+        <logger
+            level="INFO"
+            message="Retrieving legal entities from MDM - CorrelationId: #[vars.correlationId]"
+            doc:name="Log Request"
+            category="${api.name}" />
+
+        <!-- Store query parameters -->
+        <set-variable
+            variableName="queryParams"
+            value="#[attributes.queryParams]"
+            doc:name="Store Query Params" />
+
+        <!-- Validate Parameters -->
+        <ee:transform doc:name="Prepare Query Parameters">
+            <ee:message>
+            </ee:message>
+            <ee:variables>
+                <ee:set-variable variableName="filters"><![CDATA[%dw 2.0
+output application/json
+---
+{
+    legalEntityId: vars.queryParams.legalEntityId,
+    legalEntityName: vars.queryParams.legalEntityName,
+    country: vars.queryParams.country,
+    status: "APPROVED", // System enforces APPROVED only
+    limit: vars.queryParams.limit default 100,
+    offset: vars.queryParams.offset default 0
+}]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <!-- Choose Integration Method: Database or HTTP -->
+        <choice doc:name="Select MDM Integration Method">
+            <when expression="#[p('mdm.integration.type') == 'database']">
+                <flow-ref name="get-legal-entities-from-mdm-db" doc:name="Get from MDM Database" />
+            </when>
+            <when expression="#[p('mdm.integration.type') == 'http']">
+                <flow-ref name="get-legal-entities-from-mdm-http" doc:name="Get from MDM HTTP API" />
+            </when>
+            <otherwise>
+                <!-- Default to mock data for development -->
+                <flow-ref name="get-legal-entities-mock" doc:name="Get Mock Data" />
+            </otherwise>
+        </choice>
+
+        <!-- Transform MDM Response to API Format -->
+        <ee:transform doc:name="Transform to API Response">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    totalCount: payload.totalCount,
+    returnedCount: sizeOf(payload.data),
+    offset: vars.filters.offset,
+    limit: vars.filters.limit,
+    data: payload.data,
+    correlationId: vars.correlationId,
+    timestamp: now() as String { format: "yyyy-MM-dd'T'HH:mm:ss'Z'" }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <logger
+            level="INFO"
+            message="Successfully retrieved #[payload.returnedCount] legal entities from MDM - CorrelationId: #[vars.correlationId]"
+            doc:name="Log Success"
+            category="${api.name}" />
+
+        <error-handler ref="Global_Error_Handler" />
+    </flow>
+
+    <!-- Get Legal Entity by ID from MDM -->
+    <flow name="get:\legalentities\(legalEntityId):system-api-config">
+        <logger
+            level="INFO"
+            message="Retrieving legal entity #[attributes.uriParams.legalEntityId] from MDM - CorrelationId: #[vars.correlationId]"
+            doc:name="Log Request"
+            category="${api.name}" />
+
+        <!-- Store URI parameter -->
+        <set-variable
+            variableName="legalEntityId"
+            value="#[attributes.uriParams.legalEntityId]"
+            doc:name="Store Legal Entity ID" />
+
+        <!-- Choose Integration Method -->
+        <choice doc:name="Select MDM Integration Method">
+            <when expression="#[p('mdm.integration.type') == 'database']">
+                <flow-ref name="get-legal-entity-by-id-from-mdm-db" doc:name="Get from MDM Database" />
+            </when>
+            <when expression="#[p('mdm.integration.type') == 'http']">
+                <flow-ref name="get-legal-entity-by-id-from-mdm-http" doc:name="Get from MDM HTTP API" />
+            </when>
+            <otherwise>
+                <!-- Default to mock data for development -->
+                <flow-ref name="get-legal-entity-by-id-mock" doc:name="Get Mock Data" />
+            </otherwise>
+        </choice>
+
+        <!-- Transform MDM Response to API Format -->
+        <ee:transform doc:name="Transform to API Response">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    data: payload,
+    correlationId: vars.correlationId,
+    timestamp: now() as String { format: "yyyy-MM-dd'T'HH:mm:ss'Z'" }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <logger
+            level="INFO"
+            message="Successfully retrieved legal entity #[vars.legalEntityId] from MDM - CorrelationId: #[vars.correlationId]"
+            doc:name="Log Success"
+            category="${api.name}" />
+
+        <error-handler ref="Global_Error_Handler" />
+    </flow>
+
+    <!-- Health Check Flow -->
+    <flow name="get:\health:system-api-config">
+        <logger
+            level="INFO"
+            message="Health check requested - CorrelationId: #[vars.correlationId]"
+            doc:name="Log Request"
+            category="${api.name}" />
+
+        <!-- Check MDM Connectivity -->
+        <try doc:name="Try MDM Connection">
+            <choice doc:name="Select Connection Type">
+                <when expression="#[p('mdm.integration.type') == 'database']">
+                    <db:select config-ref="MDM_Database_Config" doc:name="Test DB Connection">
+                        <db:sql>SELECT 1 FROM DUAL</db:sql>
+                    </db:select>
+                    <set-variable variableName="mdmConnection" value="UP" />
+                </when>
+                <when expression="#[p('mdm.integration.type') == 'http']">
+                    <http:request
+                        method="GET"
+                        config-ref="MDM_HTTP_Request_Config"
+                        path="/health"
+                        doc:name="Test HTTP Connection" />
+                    <set-variable variableName="mdmConnection" value="UP" />
+                </when>
+                <otherwise>
+                    <set-variable variableName="mdmConnection" value="MOCK" />
+                </otherwise>
+            </choice>
+
+            <error-handler>
+                <on-error-continue>
+                    <set-variable variableName="mdmConnection" value="DOWN" />
+                </on-error-continue>
+            </error-handler>
+        </try>
+
+        <ee:transform doc:name="Health Response">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    status: if (vars.mdmConnection == "UP" or vars.mdmConnection == "MOCK") "UP" else "DOWN",
+    apiName: p('api.name'),
+    version: p('api.version'),
+    timestamp: now() as String { format: "yyyy-MM-dd'T'HH:mm:ss'Z'" },
+    mdmConnection: vars.mdmConnection
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <error-handler ref="Global_Error_Handler" />
+    </flow>
+
+    <!-- Sub-flow: Get Legal Entities from MDM Database -->
+    <sub-flow name="get-legal-entities-from-mdm-db">
+        <logger
+            level="DEBUG"
+            message="Querying MDM database for legal entities - CorrelationId: #[vars.correlationId]"
+            category="${api.name}" />
+
+        <!-- Build Dynamic SQL Query -->
+        <ee:transform doc:name="Build SQL Query">
+            <ee:message>
+            </ee:message>
+            <ee:variables>
+                <ee:set-variable variableName="sqlQuery"><![CDATA[%dw 2.0
+output text/plain
+---
+"SELECT
+    LEGAL_ENTITY_ID,
+    LEGAL_ENTITY_NAME,
+    LEGAL_ENTITY_TYPE,
+    COUNTRY,
+    COUNTRY_NAME,
+    ADDRESS_LINE1,
+    ADDRESS_LINE2,
+    CITY,
+    STATE,
+    POSTAL_CODE,
+    ADDRESS_COUNTRY,
+    REGISTRATION_NUMBER,
+    TAX_ID,
+    STATUS,
+    EFFECTIVE_DATE,
+    EXPIRY_DATE,
+    CREATED_BY,
+    CREATED_DATE,
+    LAST_MODIFIED_BY,
+    LAST_MODIFIED_DATE,
+    PARENT_ENTITY
+FROM MDM_LEGAL_ENTITY
+WHERE STATUS = 'APPROVED'
+" ++ (if (vars.filters.legalEntityId != null)
+    " AND LEGAL_ENTITY_ID = :legalEntityId" else "") ++
+(if (vars.filters.legalEntityName != null)
+    " AND UPPER(LEGAL_ENTITY_NAME) LIKE UPPER(:legalEntityName)" else "") ++
+(if (vars.filters.country != null)
+    " AND COUNTRY = :country" else "") ++
+" ORDER BY LEGAL_ENTITY_ID
+OFFSET :offset ROWS
+FETCH NEXT :limit ROWS ONLY"]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+
+        <!-- Execute Database Query -->
+        <db:select config-ref="MDM_Database_Config" doc:name="Query MDM Database">
+            <db:sql>#[vars.sqlQuery]</db:sql>
+            <db:input-parameters><![CDATA[#[output application/java
+---
+{
+    legalEntityId: vars.filters.legalEntityId,
+    legalEntityName: if (vars.filters.legalEntityName != null) "%" ++ vars.filters.legalEntityName ++ "%" else null,
+    country: vars.filters.country,
+    offset: vars.filters.offset,
+    limit: vars.filters.limit
+}]]]></db:input-parameters>
+        </db:select>
+
+        <!-- Get Total Count -->
+        <set-variable
+            variableName="dbResults"
+            value="#[payload]"
+            doc:name="Store DB Results" />
+
+        <db:select config-ref="MDM_Database_Config" doc:name="Get Total Count" target="totalCount">
+            <db:sql>SELECT COUNT(*) as TOTAL FROM MDM_LEGAL_ENTITY WHERE STATUS = 'APPROVED'</db:sql>
+        </db:select>
+
+        <!-- Transform Database Results to JSON -->
+        <ee:transform doc:name="Transform DB Results to JSON">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    totalCount: vars.totalCount[0].TOTAL,
+    data: vars.dbResults map (entity, index) -> {
+        legalEntityId: entity.LEGAL_ENTITY_ID,
+        legalEntityName: entity.LEGAL_ENTITY_NAME,
+        legalEntityType: entity.LEGAL_ENTITY_TYPE,
+        country: entity.COUNTRY,
+        countryName: entity.COUNTRY_NAME,
+        address: {
+            addressLine1: entity.ADDRESS_LINE1,
+            addressLine2: entity.ADDRESS_LINE2,
+            city: entity.CITY,
+            state: entity.STATE,
+            postalCode: entity.POSTAL_CODE,
+            country: entity.ADDRESS_COUNTRY
+        },
+        registrationNumber: entity.REGISTRATION_NUMBER,
+        taxId: entity.TAX_ID,
+        status: entity.STATUS,
+        effectiveDate: entity.EFFECTIVE_DATE as String {format: "yyyy-MM-dd"} if entity.EFFECTIVE_DATE != null else null,
+        expiryDate: entity.EXPIRY_DATE as String {format: "yyyy-MM-dd"} if entity.EXPIRY_DATE != null else null,
+        createdBy: entity.CREATED_BY,
+        createdDate: entity.CREATED_DATE as String {format: "yyyy-MM-dd'T'HH:mm:ss'Z'"} if entity.CREATED_DATE != null else null,
+        lastModifiedBy: entity.LAST_MODIFIED_BY,
+        lastModifiedDate: entity.LAST_MODIFIED_DATE as String {format: "yyyy-MM-dd'T'HH:mm:ss'Z'"} if entity.LAST_MODIFIED_DATE != null else null,
+        parentEntity: entity.PARENT_ENTITY
+    }
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+
+        <logger
+            level="DEBUG"
+            message="MDM database query completed - CorrelationId: #[vars.correlationId] - Records: #[sizeOf(payload.data)]"
+            category="${api.name}" />
+    </sub-flow>
+
+    <!-- Sub-flow: Get Legal Entity by ID from MDM Database -->
+    <sub-flow name="get-legal-entity-by-id-from-mdm-db">
+        <logger
+            level="DEBUG"
+            message="Querying MDM database for legal entity #[vars.legalEntityId] - CorrelationId: #[vars.correlationId]"
+            category="${api.name}" />
+
+        <db:select config-ref="MDM_Database_Config" doc:name="Query MDM Database">
+            <db:sql><![CDATA[SELECT
+    LEGAL_ENTITY_ID,
+    LEGAL_ENTITY_NAME,
+    LEGAL_ENTITY_TYPE,
+    COUNTRY,
+    COUNTRY_NAME,
+    ADDRESS_LINE1,
+    ADDRESS_LINE2,
+    CITY,
+    STATE,
+    POSTAL_CODE,
+    ADDRESS_COUNTRY,
+    REGISTRATION_NUMBER,
+    TAX_ID,
+    STATUS,
+    EFFECTIVE_DATE,
+    EXPIRY_DATE,
+    CREATED_BY,
+    CREATED_DATE,
+    LAST_MODIFIED_BY,
+    LAST_MODIFIED_DATE,
+    PARENT_ENTITY
+FROM MDM_LEGAL_ENTITY
+WHERE LEGAL_ENTITY_ID = :legalEntityId
+AND STATUS = 'APPROVED']]></db:sql>
+            <db:input-parameters><![CDATA[#[output application/java
+---
+{
+    legalEntityId: vars.legalEntityId
+}]]]></db:input-parameters>
+        </db:select>
+
+        <!-- Check if record exists -->
+        <choice doc:name="Check If Found">
+            <when expression="#[sizeOf(payload) == 0]">
+                <raise-error
+                    type="MDM:NOT_FOUND"
+                    description="#['Legal entity ' ++ vars.legalEntityId ++ ' not found or not approved']" />
+            </when>
+        </choice>
+
+        <!-- Transform Database Result to JSON -->
+        <ee:transform doc:name="Transform DB Result to JSON">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    legalEntityId: payload[0].LEGAL_ENTITY_ID,
+    legalEntityName: payload[0].LEGAL_ENTITY_NAME,
+    legalEntityType: payload[0].LEGAL_ENTITY_TYPE,
+    country: payload[0].COUNTRY,
+    countryName: payload[0].COUNTRY_NAME,
+    address: {
+        addressLine1: payload[0].ADDRESS_LINE1,
+        addressLine2: payload[0].ADDRESS_LINE2,
+        city: payload[0].CITY,
+        state: payload[0].STATE,
+        postalCode: payload[0].POSTAL_CODE,
+        country: payload[0].ADDRESS_COUNTRY
+    },
+    registrationNumber: payload[0].REGISTRATION_NUMBER,
+    taxId: payload[0].TAX_ID,
+    status: payload[0].STATUS,
+    effectiveDate: payload[0].EFFECTIVE_DATE as String {format: "yyyy-MM-dd"} if payload[0].EFFECTIVE_DATE != null else null,
+    expiryDate: payload[0].EXPIRY_DATE as String {format: "yyyy-MM-dd"} if payload[0].EXPIRY_DATE != null else null,
+    createdBy: payload[0].CREATED_BY,
+    createdDate: payload[0].CREATED_DATE as String {format: "yyyy-MM-dd'T'HH:mm:ss'Z'"} if payload[0].CREATED_DATE != null else null,
+    lastModifiedBy: payload[0].LAST_MODIFIED_BY,
+    lastModifiedDate: payload[0].LAST_MODIFIED_DATE as String {format: "yyyy-MM-dd'T'HH:mm:ss'Z'"} if payload[0].LAST_MODIFIED_DATE != null else null,
+    parentEntity: payload[0].PARENT_ENTITY
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </sub-flow>
+
+    <!-- Sub-flow: Get Legal Entities from MDM HTTP API -->
+    <sub-flow name="get-legal-entities-from-mdm-http">
+        <logger
+            level="DEBUG"
+            message="Calling MDM HTTP API for legal entities - CorrelationId: #[vars.correlationId]"
+            category="${api.name}" />
+
+        <http:request
+            method="GET"
+            config-ref="MDM_HTTP_Request_Config"
+            path="/api/legalentities"
+            doc:name="MDM HTTP Request">
+            <http:query-params><![CDATA[#[output application/java
+---
+vars.filters]]]></http:query-params>
+        </http:request>
+
+        <!-- Transform if needed (assuming MDM returns similar format) -->
+        <ee:transform doc:name="Transform HTTP Response">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </sub-flow>
+
+    <!-- Sub-flow: Get Legal Entity by ID from MDM HTTP API -->
+    <sub-flow name="get-legal-entity-by-id-from-mdm-http">
+        <logger
+            level="DEBUG"
+            message="Calling MDM HTTP API for legal entity #[vars.legalEntityId] - CorrelationId: #[vars.correlationId]"
+            category="${api.name}" />
+
+        <http:request
+            method="GET"
+            config-ref="MDM_HTTP_Request_Config"
+            path="#['/api/legalentities/' ++ vars.legalEntityId]"
+            doc:name="MDM HTTP Request" />
+
+        <!-- Transform if needed -->
+        <ee:transform doc:name="Transform HTTP Response">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </sub-flow>
+
+    <!-- Sub-flow: Mock Legal Entities (for development/testing) -->
+    <sub-flow name="get-legal-entities-mock">
+        <logger
+            level="WARN"
+            message="Using MOCK data for legal entities - CorrelationId: #[vars.correlationId]"
+            category="${api.name}" />
+
+        <ee:transform doc:name="Generate Mock Data">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    totalCount: 2,
+    data: [
+        {
+            legalEntityId: "LE001234",
+            legalEntityName: "Acme Corporation Ltd",
+            legalEntityType: "Corporation",
+            country: "US",
+            countryName: "United States",
+            address: {
+                addressLine1: "123 Main Street",
+                addressLine2: "Suite 100",
+                city: "New York",
+                state: "NY",
+                postalCode: "10001",
+                country: "US"
+            },
+            registrationNumber: "12-3456789",
+            taxId: "98-7654321",
+            status: "APPROVED",
+            effectiveDate: "2025-01-01",
+            expiryDate: "2026-12-31",
+            createdBy: "system.user",
+            createdDate: "2025-01-01T00:00:00Z",
+            lastModifiedBy: "admin.user",
+            lastModifiedDate: "2025-11-11T10:30:00Z",
+            parentEntity: null
+        },
+        {
+            legalEntityId: "LE001235",
+            legalEntityName: "Global Finance LLC",
+            legalEntityType: "LLC",
+            country: "GB",
+            countryName: "United Kingdom",
+            address: {
+                addressLine1: "456 High Street",
+                addressLine2: null,
+                city: "London",
+                state: null,
+                postalCode: "SW1A 1AA",
+                country: "GB"
+            },
+            registrationNumber: "GB123456789",
+            taxId: "GB987654321",
+            status: "APPROVED",
+            effectiveDate: "2024-06-15",
+            expiryDate: "2027-06-15",
+            createdBy: "system.user",
+            createdDate: "2024-06-15T00:00:00Z",
+            lastModifiedBy: "system.user",
+            lastModifiedDate: "2024-06-15T00:00:00Z",
+            parentEntity: "LE001234"
+        }
+    ]
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </sub-flow>
+
+    <!-- Sub-flow: Mock Legal Entity by ID (for development/testing) -->
+    <sub-flow name="get-legal-entity-by-id-mock">
+        <logger
+            level="WARN"
+            message="Using MOCK data for legal entity #[vars.legalEntityId] - CorrelationId: #[vars.correlationId]"
+            category="${api.name}" />
+
+        <ee:transform doc:name="Generate Mock Data">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+    legalEntityId: vars.legalEntityId,
+    legalEntityName: "Mock Corporation Ltd",
+    legalEntityType: "Corporation",
+    country: "US",
+    countryName: "United States",
+    address: {
+        addressLine1: "123 Main Street",
+        addressLine2: "Suite 100",
+        city: "New York",
+        state: "NY",
+        postalCode: "10001",
+        country: "US"
+    },
+    registrationNumber: "12-3456789",
+    taxId: "98-7654321",
+    status: "APPROVED",
+    effectiveDate: "2025-01-01",
+    expiryDate: "2026-12-31",
+    createdBy: "system.user",
+    createdDate: "2025-01-01T00:00:00Z",
+    lastModifiedBy: "admin.user",
+    lastModifiedDate: "2025-11-11T10:30:00Z",
+    parentEntity: null
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+    </sub-flow>
+
+</mule>

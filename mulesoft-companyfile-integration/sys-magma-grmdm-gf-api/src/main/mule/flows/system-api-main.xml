@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd">
+
+    <!-- APIKit Router Configuration -->
+    <apikit:config name="system-api-config"
+                   api="resource::sys-magma-grmdm-gf-api.raml"
+                   outboundHeadersMapName="outboundHeaders"
+                   httpStatusVarName="httpStatus" />
+
+    <!-- Main API Flow -->
+    <flow name="sys-magma-grmdm-gf-api-main">
+        <http:listener
+            config-ref="HTTP_Listener_Config"
+            path="/grmdm/companyfile/v1/*"
+            doc:name="HTTP Listener"
+            allowedMethods="GET">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+
+        <!-- Get or Generate Correlation ID -->
+        <set-variable
+            variableName="correlationId"
+            value="#[attributes.headers['X-Correlation-Id'] default uuid()]"
+            doc:name="Set/Get Correlation ID" />
+
+        <!-- Log Incoming Request -->
+        <logger
+            level="INFO"
+            message="Incoming Request - CorrelationId: #[vars.correlationId] - Path: #[attributes.requestPath] - Method: #[attributes.method] - QueryParams: #[attributes.queryParams]"
+            category="${api.name}" />
+
+        <!-- APIKit Router -->
+        <apikit:router config-ref="system-api-config" />
+
+        <!-- Log Response -->
+        <logger
+            level="INFO"
+            message="Outgoing Response - CorrelationId: #[vars.correlationId] - Status: #[vars.httpStatus default 200]"
+            category="${api.name}" />
+
+        <error-handler ref="Global_Error_Handler" />
+    </flow>
+
+    <!-- APIKit Console (Development Only) -->
+    <flow name="sys-magma-grmdm-gf-api-console">
+        <http:listener
+            config-ref="HTTP_Listener_Config"
+            path="/console/*"
+            doc:name="HTTP Listener">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+        </http:listener>
+        <apikit:console config-ref="system-api-config" />
+        <error-handler ref="Global_Error_Handler" />
+    </flow>
+
+</mule>

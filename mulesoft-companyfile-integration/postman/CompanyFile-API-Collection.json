@@ -1,0 +1,448 @@
+{
+  "info": {
+    "name": "Company File Integration APIs",
+    "description": "Postman collection for testing MuleSoft Company File Integration APIs",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "12345678-1234-1234-1234-123456789012",
+    "version": "1.0.0"
+  },
+  "item": [
+    {
+      "name": "Experience API",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{experience_api_url}}/simp/companyfile/v1/health",
+              "host": ["{{experience_api_url}}"],
+              "path": ["simp", "companyfile", "v1", "health"]
+            },
+            "description": "Check Experience API health status"
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Legal Entities",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "client_id",
+                "value": "{{client_id}}",
+                "type": "text"
+              },
+              {
+                "key": "client_secret",
+                "value": "{{client_secret}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{experience_api_url}}/simp/companyfile/v1/legalentities?limit=10&offset=0",
+              "host": ["{{experience_api_url}}"],
+              "path": ["simp", "companyfile", "v1", "legalentities"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "offset",
+                  "value": "0"
+                }
+              ]
+            },
+            "description": "Retrieve all legal entities with pagination"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Legal Entities by Country",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "client_id",
+                "value": "{{client_id}}",
+                "type": "text"
+              },
+              {
+                "key": "client_secret",
+                "value": "{{client_secret}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{experience_api_url}}/simp/companyfile/v1/legalentities?country=US&limit=10",
+              "host": ["{{experience_api_url}}"],
+              "path": ["simp", "companyfile", "v1", "legalentities"],
+              "query": [
+                {
+                  "key": "country",
+                  "value": "US"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Retrieve legal entities filtered by country"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Legal Entities by Name",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "client_id",
+                "value": "{{client_id}}",
+                "type": "text"
+              },
+              {
+                "key": "client_secret",
+                "value": "{{client_secret}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{experience_api_url}}/simp/companyfile/v1/legalentities?legalEntityName=Acme",
+              "host": ["{{experience_api_url}}"],
+              "path": ["simp", "companyfile", "v1", "legalentities"],
+              "query": [
+                {
+                  "key": "legalEntityName",
+                  "value": "Acme"
+                }
+              ]
+            },
+            "description": "Retrieve legal entities filtered by name (partial match)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Legal Entity by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "client_id",
+                "value": "{{client_id}}",
+                "type": "text"
+              },
+              {
+                "key": "client_secret",
+                "value": "{{client_secret}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{experience_api_url}}/simp/companyfile/v1/legalentities/LE001234",
+              "host": ["{{experience_api_url}}"],
+              "path": ["simp", "companyfile", "v1", "legalentities", "LE001234"]
+            },
+            "description": "Retrieve a specific legal entity by ID"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Process API",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{process_api_url}}/magma/companyfile/v1/health",
+              "host": ["{{process_api_url}}"],
+              "path": ["magma", "companyfile", "v1", "health"]
+            },
+            "description": "Check Process API health status and downstream dependencies"
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Legal Entities",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "client_id",
+                "value": "{{process_api_client_id}}",
+                "type": "text"
+              },
+              {
+                "key": "client_secret",
+                "value": "{{process_api_client_secret}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{process_api_url}}/magma/companyfile/v1/legalentities?limit=10",
+              "host": ["{{process_api_url}}"],
+              "path": ["magma", "companyfile", "v1", "legalentities"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Retrieve orchestrated legal entities data"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Legal Entity by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "client_id",
+                "value": "{{process_api_client_id}}",
+                "type": "text"
+              },
+              {
+                "key": "client_secret",
+                "value": "{{process_api_client_secret}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{process_api_url}}/magma/companyfile/v1/legalentities/LE001234",
+              "host": ["{{process_api_url}}"],
+              "path": ["magma", "companyfile", "v1", "legalentities", "LE001234"]
+            },
+            "description": "Retrieve specific legal entity with enriched data"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "System API",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{system_api_url}}/grmdm/companyfile/v1/health",
+              "host": ["{{system_api_url}}"],
+              "path": ["grmdm", "companyfile", "v1", "health"]
+            },
+            "description": "Check System API health and MDM connectivity"
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Legal Entities from MDM",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "client_id",
+                "value": "{{system_api_client_id}}",
+                "type": "text"
+              },
+              {
+                "key": "client_secret",
+                "value": "{{system_api_client_secret}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{system_api_url}}/grmdm/companyfile/v1/legalentities?limit=10",
+              "host": ["{{system_api_url}}"],
+              "path": ["grmdm", "companyfile", "v1", "legalentities"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Retrieve legal entities directly from MDM (APPROVED only)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Legal Entity by ID from MDM",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "client_id",
+                "value": "{{system_api_client_id}}",
+                "type": "text"
+              },
+              {
+                "key": "client_secret",
+                "value": "{{system_api_client_secret}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-Id",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{system_api_url}}/grmdm/companyfile/v1/legalentities/LE001234",
+              "host": ["{{system_api_url}}"],
+              "path": ["grmdm", "companyfile", "v1", "legalentities", "LE001234"]
+            },
+            "description": "Retrieve specific legal entity from MDM"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Error Scenarios",
+      "item": [
+        {
+          "name": "401 - Missing Client Credentials",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{experience_api_url}}/simp/companyfile/v1/legalentities",
+              "host": ["{{experience_api_url}}"],
+              "path": ["simp", "companyfile", "v1", "legalentities"]
+            },
+            "description": "Test missing authentication credentials"
+          },
+          "response": []
+        },
+        {
+          "name": "400 - Invalid Limit Parameter",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "client_id",
+                "value": "{{client_id}}",
+                "type": "text"
+              },
+              {
+                "key": "client_secret",
+                "value": "{{client_secret}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{experience_api_url}}/simp/companyfile/v1/legalentities?limit=2000",
+              "host": ["{{experience_api_url}}"],
+              "path": ["simp", "companyfile", "v1", "legalentities"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "2000"
+                }
+              ]
+            },
+            "description": "Test validation error (limit exceeds maximum)"
+          },
+          "response": []
+        },
+        {
+          "name": "404 - Legal Entity Not Found",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "client_id",
+                "value": "{{client_id}}",
+                "type": "text"
+              },
+              {
+                "key": "client_secret",
+                "value": "{{client_secret}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{experience_api_url}}/simp/companyfile/v1/legalentities/NOTFOUND",
+              "host": ["{{experience_api_url}}"],
+              "path": ["simp", "companyfile", "v1", "legalentities", "NOTFOUND"]
+            },
+            "description": "Test non-existent legal entity"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "experience_api_url",
+      "value": "http://localhost:8081",
+      "type": "string"
+    },
+    {
+      "key": "process_api_url",
+      "value": "http://localhost:8082",
+      "type": "string"
+    },
+    {
+      "key": "system_api_url",
+      "value": "http://localhost:8083",
+      "type": "string"
+    },
+    {
+      "key": "client_id",
+      "value": "test-client-id",
+      "type": "string"
+    },
+    {
+      "key": "client_secret",
+      "value": "test-client-secret",
+      "type": "string"
+    },
+    {
+      "key": "process_api_client_id",
+      "value": "process-client-id",
+      "type": "string"
+    },
+    {
+      "key": "process_api_client_secret",
+      "value": "process-client-secret",
+      "type": "string"
+    },
+    {
+      "key": "system_api_client_id",
+      "value": "system-client-id",
+      "type": "string"
+    },
+    {
+      "key": "system_api_client_secret",
+      "value": "system-client-secret",
+      "type": "string"
+    }
+  ]
+}

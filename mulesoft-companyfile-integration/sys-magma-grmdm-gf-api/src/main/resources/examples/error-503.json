@@ -1,0 +1,7 @@
+{
+  "status": "503",
+  "error": "Service Unavailable",
+  "message": "The service is temporarily unavailable. Please try again later",
+  "timestamp": "2025-11-11T10:30:00Z",
+  "correlationId": "550e8400-e29b-41d4-a716-446655440000"
+}

@@ -1,0 +1,29 @@
+{
+  "data": {
+    "legalEntityId": "LE001234",
+    "legalEntityName": "Acme Corporation Ltd",
+    "legalEntityType": "Corporation",
+    "country": "US",
+    "countryName": "United States",
+    "address": {
+      "addressLine1": "123 Main Street",
+      "addressLine2": "Suite 100",
+      "city": "New York",
+      "state": "NY",
+      "postalCode": "10001",
+      "country": "US"
+    },
+    "registrationNumber": "12-3456789",
+    "taxId": "98-7654321",
+    "status": "APPROVED",
+    "effectiveDate": "2025-01-01",
+    "expiryDate": "2026-12-31",
+    "createdBy": "system.user",
+    "createdDate": "2025-01-01T00:00:00Z",
+    "lastModifiedBy": "admin.user",
+    "lastModifiedDate": "2025-11-11T10:30:00Z",
+    "parentEntity": null
+  },
+  "correlationId": "550e8400-e29b-41d4-a716-446655440000",
+  "timestamp": "2025-11-11T10:30:00Z"
+}

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+      xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd">
+
+    <!-- APIKit Router Configuration -->
+    <apikit:config name="experience-api-config"
+                   api="resource::exp-simp-companyfile-gf-api.raml"
+                   outboundHeadersMapName="outboundHeaders"
+                   httpStatusVarName="httpStatus" />
+
+    <!-- Main API Flow -->
+    <flow name="exp-simp-companyfile-gf-api-main">
+        <http:listener
+            config-ref="HTTP_Listener_Config"
+            path="/simp/companyfile/v1/*"
+            doc:name="HTTP Listener"
+            allowedMethods="GET">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+
+        <!-- Generate Correlation ID -->
+        <set-variable
+            variableName="correlationId"
+            value="#[uuid()]"
+            doc:name="Set Correlation ID" />
+
+        <!-- Log Incoming Request -->
+        <logger
+            level="INFO"
+            message="Incoming Request - CorrelationId: #[vars.correlationId] - Path: #[attributes.requestPath] - Method: #[attributes.method] - QueryParams: #[attributes.queryParams]"
+            category="${api.name}" />
+
+        <!-- APIKit Router -->
+        <apikit:router config-ref="experience-api-config" />
+
+        <!-- Log Response -->
+        <logger
+            level="INFO"
+            message="Outgoing Response - CorrelationId: #[vars.correlationId] - Status: #[vars.httpStatus default 200]"
+            category="${api.name}" />
+
+        <error-handler ref="Global_Error_Handler" />
+    </flow>
+
+    <!-- APIKit Console (Development Only) -->
+    <flow name="exp-simp-companyfile-gf-api-console">
+        <http:listener
+            config-ref="HTTP_Listener_Config"
+            path="/console/*"
+            doc:name="HTTP Listener">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+        </http:listener>
+        <apikit:console config-ref="experience-api-config" />
+        <error-handler ref="Global_Error_Handler" />
+    </flow>
+
+</mule>

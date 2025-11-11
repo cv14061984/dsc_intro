@@ -1,0 +1,177 @@
+#%RAML 1.0
+title: Process API - MAGMA Company File
+version: v1
+baseUri: https://api.company.com/magma/companyfile/{version}
+
+mediaType: application/json
+
+uses:
+  common: ../schemas/common-types.raml
+
+traits:
+  client-id-required:
+    headers:
+      client_id:
+        type: string
+        required: true
+        description: Client ID for API authentication
+      client_secret:
+        type: string
+        required: true
+        description: Client secret for API authentication
+      X-Correlation-Id:
+        type: string
+        required: false
+        description: Correlation ID for request tracking
+    responses:
+      401:
+        body:
+          application/json:
+            type: common.ErrorResponse
+            example: !include ../examples/error-401.json
+      403:
+        body:
+          application/json:
+            type: common.ErrorResponse
+            example: !include ../examples/error-403.json
+
+/legalentities:
+  displayName: Legal Entities
+  description: Orchestrate legal entity retrieval from MDM via System API
+
+  get:
+    displayName: Get Legal Entities
+    description: |
+      Orchestrates the retrieval of legal entity details from Informatica MDM.
+      Performs data transformation and enrichment.
+      Only approved records are returned.
+    is: [client-id-required]
+    queryParameters:
+      legalEntityId:
+        type: string
+        required: false
+        description: Specific Legal Entity ID to retrieve
+        example: "LE001234"
+      legalEntityName:
+        type: string
+        required: false
+        description: Legal Entity Name (supports partial match)
+        example: "Acme Corporation"
+      country:
+        type: string
+        required: false
+        description: Country code (ISO 3166-1 alpha-2)
+        example: "US"
+      status:
+        type: string
+        required: false
+        default: "APPROVED"
+        description: Status filter (default is APPROVED only)
+        enum: [APPROVED]
+      limit:
+        type: integer
+        required: false
+        default: 100
+        minimum: 1
+        maximum: 1000
+        description: Maximum number of records to return
+      offset:
+        type: integer
+        required: false
+        default: 0
+        minimum: 0
+        description: Number of records to skip for pagination
+    responses:
+      200:
+        description: Successfully retrieved and orchestrated legal entities
+        body:
+          application/json:
+            type: common.LegalEntitiesResponse
+            example: !include ../examples/legal-entities-response.json
+      400:
+        description: Bad Request - Invalid parameters
+        body:
+          application/json:
+            type: common.ErrorResponse
+            example: !include ../examples/error-400.json
+      404:
+        description: No legal entities found
+        body:
+          application/json:
+            type: common.ErrorResponse
+            example: !include ../examples/error-404.json
+      500:
+        description: Internal Server Error
+        body:
+          application/json:
+            type: common.ErrorResponse
+            example: !include ../examples/error-500.json
+      503:
+        description: Service Unavailable
+        body:
+          application/json:
+            type: common.ErrorResponse
+            example: !include ../examples/error-503.json
+
+  /{legalEntityId}:
+    displayName: Legal Entity by ID
+    description: Orchestrate retrieval of a specific legal entity by ID
+
+    uriParameters:
+      legalEntityId:
+        type: string
+        description: Unique Legal Entity identifier
+        example: "LE001234"
+
+    get:
+      displayName: Get Legal Entity by ID
+      description: Orchestrates retrieval of a specific legal entity's details
+      is: [client-id-required]
+      responses:
+        200:
+          description: Successfully retrieved legal entity
+          body:
+            application/json:
+              type: common.LegalEntityResponse
+              example: !include ../examples/legal-entity-response.json
+        400:
+          description: Bad Request - Invalid Legal Entity ID
+          body:
+            application/json:
+              type: common.ErrorResponse
+              example: !include ../examples/error-400.json
+        404:
+          description: Legal Entity not found
+          body:
+            application/json:
+              type: common.ErrorResponse
+              example: !include ../examples/error-404.json
+        500:
+          description: Internal Server Error
+          body:
+            application/json:
+              type: common.ErrorResponse
+              example: !include ../examples/error-500.json
+
+/health:
+  displayName: Health Check
+  description: API health check endpoint
+
+  get:
+    displayName: Health Status
+    description: Returns the health status of the API and its dependencies
+    responses:
+      200:
+        description: API is healthy
+        body:
+          application/json:
+            example: |
+              {
+                "status": "UP",
+                "apiName": "proc-magma-companyfile-gf-api",
+                "version": "v1",
+                "timestamp": "2025-11-11T10:30:00Z",
+                "dependencies": {
+                  "systemApi": "UP"
+                }
+              }

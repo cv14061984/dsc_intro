@@ -1,0 +1,79 @@
+# MuleSoft Specific
+.mule/
+.studio/
+.settings/
+target/
+bin/
+*.class
+*.jar
+!ojdbc8*.jar
+
+# Anypoint Studio
+.classpath
+.project
+*.iml
+.idea/
+*.ipr
+*.iws
+
+# Maven
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+
+# Secure Properties
+*-secure.properties
+*.encrypted
+
+# TLS Certificates
+keystore/
+truststore/
+*.jks
+*.p12
+*.pem
+*.key
+*.crt
+
+# Logs
+logs/
+*.log
+
+# OS Specific
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment Specific
+*.local.properties
+local-*.properties
+
+# Temporary Files
+*.tmp
+*.swp
+*.bak
+*~
+
+# MUnit Reports
+target/site/munit/
+target/surefire-reports/
+
+# Node Modules (if any)
+node_modules/
+npm-debug.log
+
+# Backup Files
+*.backup
+*.old
+
+# API Manager
+api-manager-*.json
+
+# CloudHub
+cloudhub.properties
+
+# Credentials
+credentials.json
+secrets.yaml

@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:http="http://www.mulesoft.org/schema/mule/http"
+      xmlns:api-gateway="http://www.mulesoft.org/schema/mule/api-gateway"
+      xmlns:tls="http://www.mulesoft.org/schema/mule/tls"
+      xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties"
+      xmlns:db="http://www.mulesoft.org/schema/mule/db"
+      xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/api-gateway http://www.mulesoft.org/schema/mule/api-gateway/current/mule-api-gateway.xsd
+        http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd
+        http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd
+        http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+
+    <!-- Configuration Properties -->
+    <configuration-properties file="properties/${mule.env}.properties" />
+
+    <!-- Secure Properties (for production) -->
+    <secure-properties:config name="Secure_Properties_Config"
+                              file="properties/${mule.env}-secure.properties"
+                              key="${secure.key}">
+        <secure-properties:encrypt algorithm="Blowfish" />
+    </secure-properties:config>
+
+    <!-- Global Configuration Properties -->
+    <global-property name="mule.env" value="dev" />
+    <global-property name="api.name" value="sys-magma-grmdm-gf-api" />
+    <global-property name="api.version" value="v1" />
+
+    <!-- HTTP Listener Configuration -->
+    <http:listener-config name="HTTP_Listener_Config">
+        <http:listener-connection
+            host="${http.listener.host}"
+            port="${http.listener.port}"
+            protocol="HTTPS">
+            <tls:context>
+                <tls:key-store
+                    type="${tls.keystore.type}"
+                    path="${tls.keystore.path}"
+                    keyPassword="${secure::tls.keystore.key.password}"
+                    password="${secure::tls.keystore.password}" />
+            </tls:context>
+        </http:listener-connection>
+    </http:listener-config>
+
+    <!-- Database Configuration for MDM Connection -->
+    <db:config name="MDM_Database_Config">
+        <db:oracle-connection
+            host="${mdm.db.host}"
+            port="${mdm.db.port}"
+            user="${secure::mdm.db.user}"
+            password="${secure::mdm.db.password}"
+            serviceName="${mdm.db.service.name}">
+            <db:pooling-profile
+                maxPoolSize="${mdm.db.pool.max.size}"
+                minPoolSize="${mdm.db.pool.min.size}"
+                acquireIncrement="${mdm.db.pool.acquire.increment}"
+                maxWait="${mdm.db.pool.max.wait}"
+                maxWaitUnit="SECONDS" />
+        </db:oracle-connection>
+    </db:config>
+
+    <!-- HTTP Request Configuration for MDM REST API (Alternative to DB) -->
+    <http:request-config name="MDM_HTTP_Request_Config">
+        <http:request-connection
+            protocol="HTTPS"
+            host="${mdm.api.host}"
+            port="${mdm.api.port}"
+            connectionIdleTimeout="${http.request.connection.idle.timeout}"
+            responseTimeout="${http.request.response.timeout}">
+            <http:authentication>
+                <http:basic-authentication
+                    username="${secure::mdm.api.username}"
+                    password="${secure::mdm.api.password}" />
+            </http:authentication>
+            <tls:context>
+                <tls:trust-store
+                    path="${tls.truststore.path}"
+                    password="${secure::tls.truststore.password}"
+                    type="${tls.truststore.type}" />
+            </tls:context>
+        </http:request-connection>
+    </http:request-config>
+
+    <!-- API Autodiscovery -->
+    <api-gateway:autodiscovery
+        apiId="${api.id}"
+        ignoreBasePath="true"
+        flowRef="sys-magma-grmdm-gf-api-main"
+        doc:name="API Autodiscovery" />
+
+</mule>
